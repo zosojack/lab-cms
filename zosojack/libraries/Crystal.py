@@ -83,12 +83,12 @@ class Crystal:
         self.which_neighbour = which_neighbour
         self.how_distant = how_distant
         
-    def calculate_potential(self):
+    def calculate_potential(self, sigma=2.644, epsilon=0.345):
         """
         Calcola il potenziale di Lennard-Jones per ogni atomo.
         Il potenziale dipende dai parametri A, B e dalla distanza di taglio R_C.
         """
-        def lennard_jones_ij(r_ij, sigma=2.644, epsilon=0.345):
+        def lennard_jones_ij(r_ij, sigma=sigma, epsilon=epsilon):
             twelve = (sigma/r_ij)**12
             six = (sigma/r_ij)**6
             return 4*epsilon*(twelve - six)
@@ -103,10 +103,7 @@ class Crystal:
         self.potential = potenziale / 2
         return self.potential
     
-    def calculate_forces(self):
-        
-        sigma = 2.644  # parametro sigma per Lennard-Jones
-        epsilon = 0.345  # parametro epsilon per Lennard-Jones
+    def calculate_forces(self, sigma=2.644, epsilon=0.345):
         
         def addendo_derivata_lennard_jones(q_i, q_k, r_ik):
             return 1/(r_ik**8) * ( (2*sigma**6)/(r_ik**6) - 1 ) * (q_i - q_k)
