@@ -83,7 +83,37 @@ class Crystal:
         self.which_neighbour = which_neighbour
         self.how_distant = how_distant
         
-    def calculate_potential(self, sigma=2.644, epsilon=0.345):
+    # ALTERNATIVA: Fare una matrice di bool N_atoms x N_atoms che indica i vicini
+    # Una seconda contiene poi i valori effettivi delle distanze 
+    def find_neighbours_matrix(self, R_C):
+        """
+        Versione con matrici numpy di find_neighbours
+        - neighbour_matrix: matrice simmetrica di bool che indica se due atomi sono vicini
+        - distance_matrix: matrice simmetrica delle distanze tra atomi (inf se non vicini)
+        """
+        
+        n = self.N_atoms
+        # Matrice simmetrica: neighbour_matrix[i,j] = True se j è vicino di i
+        neighbour_matrix = np.zeros((n, n), dtype=bool) 
+        distance_matrix = np.full((n, n), np.inf)  # distanze
+        
+        for i in range(n):
+            for j in range(i+1, n):  # solo triangolo superiore
+                dx = self.vec_x[i] - self.vec_x[j]
+                dy = self.vec_y[i] - self.vec_y[j] 
+                dz = self.vec_z[i] - self.vec_z[j]
+                d_ij = np.sqrt(dx**2 + dy**2 + dz**2)
+                
+                if d_ij <= R_C:
+                    neighbour_matrix[i, j] = True
+                    neighbour_matrix[j, i] = True  # simmetria
+                    distance_matrix[i, j] = d_ij
+                    distance_matrix[j, i] = d_ij
+        
+        self.neighbour_matrix = neighbour_matrix
+        self.distance_matrix = distance_matrix 
+        
+    def compute_potential(self, sigma=2.644, epsilon=0.345):
         """
         Calcola il potenziale di Lennard-Jones per ogni atomo.
         Il potenziale dipende dai parametri A, B e dalla distanza di taglio R_C.
@@ -103,7 +133,8 @@ class Crystal:
         self.potential = potenziale / 2
         return self.potential
     
-    def calculate_forces(self, sigma=2.644, epsilon=0.345):
+    
+    def compute_forces(self, sigma=2.644, epsilon=0.345):
         
         def addendo_derivata_lennard_jones(q_i, q_k, r_ik):
             return 1/(r_ik**8) * ( (2*sigma**6)/(r_ik**6) - 1 ) * (q_i - q_k)
@@ -122,3 +153,20 @@ class Crystal:
             vec_forza.append([forza_x, forza_y, forza_z])
             
         return vec_forza
+    
+
+    def print_neighbours(self, index=None):
+        """
+        Stampa l'attributo which_neighbour che contiene gli indici dei primi vicini per ogni atomo.
+        """
+        if self.which_neighbour is None:
+            print("Prima di chiamare questo metodo, esegui find_neighbours(R_C)")
+            return None
+        
+        if index is not None:
+            print(f"Vicini dell'atomo {index}: {self.which_neighbour[index]}")
+            return None
+        else:
+            print("Indici dei vicini per ogni atomo:")
+            for i, neighbours in enumerate(self.which_neighbour):
+                print(f"Atomo {i}, n_neigh={self.N_neighbours[i]}: {neighbours}")
