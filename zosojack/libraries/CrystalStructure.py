@@ -1,6 +1,8 @@
+# CrystalStructure.py 
+
 import numpy as np
 
-class Crystal:
+class CrystalStructure:
     """
     Classe per rappresentare una struttura cristallina.
     Attributi:
@@ -12,24 +14,23 @@ class Crystal:
     - from_file: legge un file .txt e restituisce le coordinate degli atomi
     - find_neighbours: trova i primi vicini di ogni atomo in base a una distanza di taglio R_C
     """
-    def __init__(self, vec_x, vec_y, vec_z):
-        self.vec_x = vec_x  # coordinate x degli atomi
-        self.vec_y = vec_y  # coordinate y degli atomi
-        self.vec_z = vec_z  # coordinate z degli atomi
-        self.N_atoms = len(vec_x)  # numero totale di atomi
+    # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+    # COSTRUTTORI
+    # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+    
+    def __init__(self, positions):
+        self.positions = positions  # matrice Nx3 delle posizioni
+        self.N_atoms = positions.shape[0]  # numero totale di atomi
         self.N_neighbours = None  # numero di primi vicini per ogni atomo
         self.which_neighbour = None  # indici dei primi vicini per ogni atomo
         self.how_distant = None  # distanze tra i primi vicini per ogni atomo
-        self.potential = None  # potenziale calcolato 
+        self.R_C = np.inf  # distanza di taglio usata per trovare i vicini
         
     @classmethod
     def from_file(cls, filename):
         """Crea un Crystal leggendo da file."""
         data = np.loadtxt(filename)
-        vec_x = data[:, 0] 
-        vec_y = data[:, 1]  
-        vec_z = data[:, 2]
-        return cls(vec_x, vec_y, vec_z)
+        return cls(data)
     # Uso:
     # crystal = Crystal.from_file('data.txt')
     
@@ -38,12 +39,36 @@ class Crystal:
         """Constructor alternativo: crea Crystal vuoto"""
         zeros = np.zeros(n_atoms)
         return cls(zeros, zeros, zeros)
+    
+    # viste sulle posizioni
+    @property
+    def vec_x(self):
+        return self.positions[:, 0]
 
-    def find_neighbours(self, R_C):
+    @property
+    def vec_y(self):
+        return self.positions[:, 1]
+
+    @property
+    def vec_z(self):
+        return self.positions[:, 2]
+    
+    # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+    # METODI 
+    # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+    
+    def set_R_C(self, R_C):
+        """
+        Imposta la distanza di taglio R_C usata per trovare i vicini.
+        """
+        self.R_C = R_C
+
+    def find_neighbours(self):
         """
         Trova i primi vicini di ogni atomo in base a una distanza di taglio R_C.
         Restituisce il numero di vicini, gli indici dei vicini e le distanze.
         """
+        
         N_neighbours = []  # lista del numero di primi vicini per ogni atomo
         which_neighbour = []  # lista degli indici dei primi vicini per ogni atomo
         how_distant = []  # lista delle distanze tra i primi vicini per ogni atomo
@@ -59,8 +84,8 @@ class Crystal:
                     dy = (y_i - y_j)**2
                     dz = (z_i - z_j)**2
                     d_ij = np.sqrt(dx + dy + dz)
-                    
-                    if d_ij <= R_C:
+
+                    if d_ij <= self.R_C:
                         n_neigh_i += 1
                         list_neigh_i.append(j)
                         list_dist_ij.append(d_ij)
@@ -83,8 +108,16 @@ class Crystal:
         self.which_neighbour = which_neighbour
         self.how_distant = how_distant
         
-    # ALTERNATIVA: Fare una matrice di bool N_atoms x N_atoms che indica i vicini
+    # FIXME: QUI VA FATTO UN METODO IBRIDO!
+    
+    # COME FUNZIONA ORA: Fare una matrice di bool N_atoms x N_atoms che indica i vicini
     # Una seconda contiene poi i valori effettivi delle distanze 
+    
+    # MA NO! QUESTA VA SOSTITUITA CON UNA VERSIONE IBRIDA!
+    # USO find_neighbours in versione LISTA, poi contruisco una matrice numpy
+    # che ha un numero di COLONNE limitato al massimo numero di vicini trovato.
+    # Così non è NxN, ma al massimo Nx15 o giù di lì
+    
     def find_neighbours_matrix(self, R_C):
         """
         Versione con matrici numpy di find_neighbours
@@ -113,47 +146,6 @@ class Crystal:
         self.neighbour_matrix = neighbour_matrix
         self.distance_matrix = distance_matrix 
         
-    def compute_potential(self, sigma=2.644, epsilon=0.345):
-        """
-        Calcola il potenziale di Lennard-Jones per ogni atomo.
-        Il potenziale dipende dai parametri A, B e dalla distanza di taglio R_C.
-        """
-        def lennard_jones_ij(r_ij, sigma=sigma, epsilon=epsilon):
-            twelve = (sigma/r_ij)**12
-            six = (sigma/r_ij)**6
-            return 4*epsilon*(twelve - six)
-        
-        potenziale = 0
-        for i, atom_neighbours in enumerate(self.which_neighbour):
-            for j, neighbour_index in enumerate(atom_neighbours):
-                if i != neighbour_index:
-                    d_ij = self.how_distant[i][j]
-                    potenziale += lennard_jones_ij(d_ij)
-            
-        self.potential = potenziale / 2
-        return self.potential
-    
-    
-    def compute_forces(self, sigma=2.644, epsilon=0.345):
-        
-        def addendo_derivata_lennard_jones(q_i, q_k, r_ik):
-            return 1/(r_ik**8) * ( (2*sigma**6)/(r_ik**6) - 1 ) * (q_i - q_k)
-            
-        vec_forza = [] # ciascun entrata è un atomo, ciascun atomo è una lista di tre entrate
-        for i, atom_neighbours in enumerate(self.which_neighbour):
-            forza_x, forza_y, forza_z = 0, 0, 0
-            for j, neighbour_index in enumerate(atom_neighbours):
-                d_ij = self.how_distant[i][j]
-                forza_x += addendo_derivata_lennard_jones(self.vec_x[i], self.vec_x[neighbour_index], d_ij)
-                forza_y += addendo_derivata_lennard_jones(self.vec_y[i], self.vec_y[neighbour_index], d_ij)
-                forza_z += addendo_derivata_lennard_jones(self.vec_z[i], self.vec_z[neighbour_index], d_ij)
-            forza_x *= 24 * epsilon * sigma**6
-            forza_y *= 24 * epsilon * sigma**6
-            forza_z *= 24 * epsilon * sigma**6
-            vec_forza.append([forza_x, forza_y, forza_z])
-            
-        return vec_forza
-    
 
     def print_neighbours(self, index=None):
         """
