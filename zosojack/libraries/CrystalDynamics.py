@@ -6,6 +6,7 @@ from libraries.CrystalPotential import CrystalPotential
 
 # Costanti fisiche
 k_B = 1/11603 # eV/K
+N_A = 1.66053906660E-27 # numero di Avogadro
 
 '''
 Deve avere:
@@ -33,7 +34,7 @@ class CrystalDynamics:
         # Oggetti 
         self.crystal  = crystal  # oggetto CrystalStructure
         # Parametri della simulazione - FIXME: questi meglio come argomento di run_dynamics?
-        self.atomic_mass = atomic_mass * 1.66053906660E-27 / 16  # massa degli atomi in eV s^2/Angstrom^2
+        self.atomic_mass = atomic_mass * 1.66E-27 / 16  # massa degli atomi in eV s^2/Angstrom^2
         self.dt = dt      # passo temporale
         self.temp_ini = temp_ini  # temperatura iniziale della simulazione
         # Variabili di stato
@@ -165,7 +166,7 @@ class CrystalDynamics:
     def run_dynamics(self, n_steps, debug=False):
         """
         Esegue la simulazione di dinamica molecolare per n_steps.
-        """
+        """    
         # Controlla che i vicini siano stati calcolati
         if self.crystal.which_neighbour is None:
             print(f"⚠️  Vicini non calcolati in precedenza. Calcolo con R_C={self.crystal.R_C}.")
@@ -178,6 +179,11 @@ class CrystalDynamics:
         # Calcola forze iniziali
         if self.old_force is None:
             self.old_force = CrystalPotential(self.crystal).compute_forces_matrix()
+            
+        # Oggetti che raccolgono i metadati (TODO: forse meglio np.array)
+        meta_E_tot = []
+        meta_E_K = []
+        meta_T = []
         
         # LOOP PRINCIPALE
         # qui andrà scartata la fase iniziale. 
@@ -196,8 +202,13 @@ class CrystalDynamics:
             potential_energy = CrystalPotential(self.crystal).compute_potential()
             temp = self._temperature()
             
-            if debug:
-                print(f"step {step+1}/{n_steps}: E_tot={potential_energy + self.kinetic_E:.3f} eV, V={potential_energy:.3f} eV, K={self.kinetic_E:.3f} eV, T={temp:.1f} K")
+            E_tot_now = potential_energy + self.kinetic_E
+            meta_E_tot.append(E_tot_now)
+            meta_E_K.append(self.kinetic_E)
+            meta_T.append(temp)
             
-       
+            if debug:
+                print(f"step {step+1}/{n_steps}: E_tot={E_tot_now:.3f} eV, V={potential_energy:.3f} eV, K={self.kinetic_E:.3f} eV, T={temp:.1f} K")
+            
+        return meta_E_tot, meta_E_K, meta_T
         
