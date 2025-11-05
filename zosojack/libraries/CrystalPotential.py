@@ -38,6 +38,37 @@ class CrystalPotential:
                 
             self.crystal.potential = potenziale / 2
             return self.crystal.potential
+        
+    def compute_potential_numpy(self):
+        """
+        Versione vettoriale di compute_potential che usa self.crystal.distance_matrix e
+        self.crystal.neighbour_matrix. Restituisce il potenziale totale.
+        """
+        # assicurati che le matrici dei vicini siano presenti
+        mask = getattr(self.crystal, "neighbour_matrix", None)
+        dist = getattr(self.crystal, "distance_matrix", None)
+        if mask is None or dist is None:
+            # prova a calcolare i vicini se disponibile la versione numpy
+            if hasattr(self.crystal, "find_neighbours_numpy"):
+                self.crystal.find_neighbours_numpy(self.crystal.R_C)
+                mask = self.crystal.neighbour_matrix
+                dist = self.crystal.distance_matrix
+            else:
+                raise RuntimeError("distance_matrix o neighbour_matrix mancanti; esegui prima find_neighbours_numpy()")
+
+        # estrai distanze solo per le coppie considerate vicine
+        r = dist[mask]  # vettore delle distanze r_ij per cui mask è True
+        if r.size == 0:
+            pot = 0.0
+        else:
+            s = self.sigma
+            e = self.epsilon
+            # calcolo vettoriale del LJ
+            phi = 4.0 * e * ( (s / r)**12 - (s / r)**6 )
+            pot = 0.5 * np.sum(phi)   # fattore 1/2 per evitare doppio conto
+
+        self.crystal.potential = float(pot)
+        return self.crystal.potential
 
 
     def compute_forces(self):
@@ -65,6 +96,51 @@ class CrystalPotential:
             
         return vec_forza
 
+    def compute_forces_numpy(self):
+        """
+        Versione vettoriale di compute_forces_matrix che usa 
+        self.crystal.distance_matrix e self.crystal.neighbour_matrix.
+        Restituisce una matrice (N,3) con le forze su ciascun atomo.
+        """
+        pos = np.asarray(self.crystal.positions, dtype=float)  # (N,3)
+        n = pos.shape[0]
+
+        mask = getattr(self.crystal, "neighbour_matrix", None)
+        dist = getattr(self.crystal, "distance_matrix", None)
+
+        if mask is None or dist is None:
+            if hasattr(self.crystal, "find_neighbours_numpy"):
+                self.crystal.find_neighbours_numpy()
+                mask = self.crystal.neighbour_matrix
+                dist = self.crystal.distance_matrix
+            else:
+                # fallback: costruisci distanze da pos e usa R_C
+                diffs_tmp = pos[:, None, :] - pos[None, :, :]
+                dist = np.linalg.norm(diffs_tmp, axis=2)
+                mask = (dist <= self.crystal.R_C) & (~np.eye(n, dtype=bool))
+
+        # differenze vettoriali e distanze
+        diffs = pos[:, None, :] - pos[None, :, :]   # (N,N,3)
+        r = np.asarray(dist, dtype=float)           # (N,N)
+
+        # coefficiente del termine
+        coeff = 24.0 * self.epsilon * (self.sigma ** 6)
+
+        # calcola lo scalare per le coppie considerate (evita divisioni per zero)
+        scalar = np.zeros_like(r)
+        idx = mask
+        if np.any(idx):
+            r_idx = r[idx]
+            inv_r8 = 1.0 / (r_idx ** 8)
+            term = (2.0 * (self.sigma ** 6) / (r_idx ** 6)) - 1.0
+            scalar[idx] = coeff * inv_r8 * term
+
+        # moltiplica per il vettore differenza e somma sulle colonne j per ottenere la forza su i
+        forces = np.sum(scalar[..., None] * diffs, axis=1)  # (N,3)
+
+        return forces
+    
+    
     def compute_forces_matrix(self):
         """
         Versione che utilizza matrici numpy.

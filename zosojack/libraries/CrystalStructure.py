@@ -63,6 +63,8 @@ class CrystalStructure:
         """
         self.R_C = R_C
 
+    # NOTE: questo metodo usa liste, non matrici numpy.
+    # utile per capire come funziona, ma find_neighbours_numpy è da preferire.
     def find_neighbours(self):
         """
         Trova i primi vicini di ogni atomo in base a una distanza di taglio R_C.
@@ -108,17 +110,8 @@ class CrystalStructure:
         self.which_neighbour = which_neighbour
         self.how_distant = how_distant
         
-    # FIXME: QUI VA FATTO UN METODO IBRIDO!
-    
-    # COME FUNZIONA ORA: Fare una matrice di bool N_atoms x N_atoms che indica i vicini
-    # Una seconda contiene poi i valori effettivi delle distanze 
-    
-    # MA NO! QUESTA VA SOSTITUITA CON UNA VERSIONE IBRIDA!
-    # USO find_neighbours in versione LISTA, poi contruisco una matrice numpy
-    # che ha un numero di COLONNE limitato al massimo numero di vicini trovato.
-    # Così non è NxN, ma al massimo Nx15 o giù di lì
-    
-    def find_neighbours_matrix(self, R_C):
+
+    def find_neighbours_matrix(self):
         """
         Versione con matrici numpy di find_neighbours
         - neighbour_matrix: matrice simmetrica di bool che indica se due atomi sono vicini
@@ -136,8 +129,8 @@ class CrystalStructure:
                 dy = self.vec_y[i] - self.vec_y[j] 
                 dz = self.vec_z[i] - self.vec_z[j]
                 d_ij = np.sqrt(dx**2 + dy**2 + dz**2)
-                
-                if d_ij <= R_C:
+
+                if d_ij <= self.R_C:
                     neighbour_matrix[i, j] = True
                     neighbour_matrix[j, i] = True  # simmetria
                     distance_matrix[i, j] = d_ij
@@ -146,6 +139,25 @@ class CrystalStructure:
         self.neighbour_matrix = neighbour_matrix
         self.distance_matrix = distance_matrix 
         
+
+    def find_neighbours_numpy(self):
+        """
+        Versione con matrici numpy di find_neighbours, ancora più efficiente.
+        - neighbour_matrix: matrice simmetrica di bool che indica se due atomi sono vicini
+        - distance_matrix: matrice simmetrica delle distanze tra atomi (inf se non vicini)
+        """
+        N = self.N_atoms
+        pos = np.asarray(self.positions)              # (N,3)
+        # matrice delle distanze (N,N)
+        diffs = pos[:, None, :] - pos[None, :, :]     # (N,N,3)
+        dist = np.linalg.norm(diffs, axis=2)
+        # mask vicini (escludo la diagonale)
+        mask = (dist <= self.R_C) & (~np.eye(N, dtype=bool))
+        # risultati
+        self.neighbour_matrix = mask
+        self.distance_matrix = np.where(mask, dist, np.inf)
+        np.fill_diagonal(self.distance_matrix, 0.0)
+
 
     def print_neighbours(self, index=None):
         """

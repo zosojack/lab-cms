@@ -1,6 +1,8 @@
 # CrystalDynamics.py
 
 import numpy as np
+import os
+from pathlib import Path
 from libraries.CrystalStructure import CrystalStructure
 from libraries.CrystalPotential import CrystalPotential
 
@@ -111,9 +113,7 @@ class CrystalDynamics:
         x(t+dt) = x(t) + v(t)*dt + 0.5*a(t)*dt^2
         """
         acc = self.old_force / self.atomic_mass  # accelerazioni
-        self.crystal.positions[:, 0] += self.velocities[:, 0] * self.dt + 0.5 * acc[:, 0] * self.dt**2
-        self.crystal.positions[:, 1] += self.velocities[:, 1] * self.dt + 0.5 * acc[:, 1] * self.dt**2
-        self.crystal.positions[:, 2] += self.velocities[:, 2] * self.dt + 0.5 * acc[:, 2] * self.dt**2
+        self.crystal.positions += self.velocities * self.dt + 0.5 * acc * (self.dt**2)
         
     def _update_neighbours(self):
         """
@@ -160,13 +160,50 @@ class CrystalDynamics:
             return (2/3) * (self.kinetic_E / (self.crystal.N_atoms * k_B))
         else:
             return self.temp_ini
+
+
+    def _output_state(self, filename, step, E_tot, E_pot, E_kin, temp):
+        """
+        Salva lo stato attuale della simulazione in un file. 
+        L'i-esima riga corrisponde allo stato istantaneo all'i-esimo step.
+        Formato: 
+        tempo, energia totale, energia potenziale, energia cinetica, temperatura
+        """
+        with open(filename, 'w') as f:
+            f.write(f"{step*self.dt} \t {E_tot} \t {E_pot} \t {E_kin} \t {temp}")
+        
+    
+    def _output_positions(self, foldername, step, n_steps):
+        """
+        Salva le posizioni attuali di tutti gli atomi della simulazione in un file.
+        Ciascun file corrisponde a uno step.
+        L'i-esima riga corrisponde alle posizioni istantanee dell'i-esimo-2 atomo.
+        """
+        width = len(str(n_steps))          
+        step_str = f"{step:0{width}d}"  
+        
+        filename = foldername \
+            / (f"t={self.dt}~" + step_str + f"_{n_steps}.xyz")
+        header = f"{self.crystal.N_atoms}\n time={step*self.dt}"
+        np.savetxt(filename, self.crystal.positions, header=header, comments='')
+        
+        
     
 
     # FIXME: pensare se mettere temperatura e dt come argomenti di run_dynamics
-    def run_dynamics(self, n_steps, debug=False):
+    def run_dynamics(self, n_steps, output=False, debug=False):
         """
         Esegue la simulazione di dinamica molecolare per n_steps.
         """    
+        # Predispone la cartella di output, se necessaria
+        # TODO: potrebbe essere necessario aggiungere il seed 
+        if output:
+            out_dir = Path(f"output/dynamics/steps{n_steps}~dt{self.dt}~T{self.temp_ini}~Ag~{self.crystal.N_atoms}")
+            out_dir.mkdir(parents=True, exist_ok=True) # crea se manca
+            state_file = out_dir / "energy.txt"
+            
+            n_Print = 10
+        
         # Controlla che i vicini siano stati calcolati
         if self.crystal.which_neighbour is None:
             print(f"⚠️  Vicini non calcolati in precedenza. Calcolo con R_C={self.crystal.R_C}.")
@@ -209,6 +246,17 @@ class CrystalDynamics:
             
             if debug:
                 print(f"step {step+1}/{n_steps}: E_tot={E_tot_now:.3f} eV, V={potential_energy:.3f} eV, K={self.kinetic_E:.3f} eV, T={temp:.1f} K")
+                
             
+            if output:
+                if step % n_Print == 0:
+                    self._output_state(state_file,
+                                       step,
+                                       E_tot_now,
+                                       potential_energy,
+                                       meta_E_K,
+                                       meta_T)
+                    self._output_positions(out_dir, step, n_steps)
+
         return meta_E_tot, meta_E_K, meta_T
         
