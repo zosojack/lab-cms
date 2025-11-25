@@ -1,9 +1,9 @@
 """CrystalDynamicsNumpy
 ========================
 
-Replica di `CrystalDynamics` che sfrutta le versioni vettoriali
+Versione di `CrystalDynamics` che sfrutta le versioni vettoriali
 (`find_neighbours_numpy`, `compute_potential_numpy`, `compute_forces_numpy`).
-Il comportamento esterno deve rimanere identico all'implementazione
+Il comportamento esterno rimane identico all'implementazione
 originale basata su liste.
 """
 
@@ -12,6 +12,7 @@ from pathlib import Path
 
 from libraries.CrystalStructure import CrystalStructure
 from libraries.CrystalPotential import CrystalPotential
+from libraries.PolynomialJunction import PolynomialJunction
 
 
 # Costanti fisiche (come in CrystalDynamics.py)
@@ -81,14 +82,14 @@ class CrystalDynamicsNumpy:
 	def _update_neighbours(self):
 		"""Aggiorna i vicini usando la versione numpy del metodo."""
 
-		self.crystal.find_neighbours_numpy()
+		self.crystal.find_neighbours_numba()
+		#self.crystal.find_neighbours_numpy()
 
-	def _update_forces(self):
+	def _update_forces(self, poly7=None):
 		"""Calcola le forze usando la versione numpy del potenziale."""
 
-		if self.new_force is not None:
-			self.old_force = self.new_force
-		self.new_force = CrystalPotential(self.crystal).compute_forces_numpy()
+		self.new_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces_numba()
+		#self.new_force = CrystalPotential(self.crystal).compute_forces_numpy()
 
 	def _update_velocities(self):
 		"""Aggiorna le velocità (formula invariata)."""
@@ -98,13 +99,16 @@ class CrystalDynamicsNumpy:
 
 		self.velocities = self.velocities + 0.5 * (acc_old + acc_new) * self.dt
 		self.kinetic_E = 0.5 * self.atomic_mass * float(np.sum(self.velocities**2))
+  
+		self.old_force = self.new_force
 
 	def _temperature(self):
 		"""Restituisce la temperatura corrente del sistema."""
 
 		if self.kinetic_E is not None:
 			return (2 / 3) * (self.kinetic_E / (self.crystal.N_atoms * k_B))
-		return self.temp_ini
+		else:
+			return self.temp_ini
 
 	def _output_state(self, filename, step, E_tot, E_pot, E_kin, temp):
 		"""Scrive lo stato della simulazione (come in CrystalDynamics)."""
@@ -125,7 +129,12 @@ class CrystalDynamicsNumpy:
 	# ---------------------------------------------------------------
 	# Ciclo di dinamica
 	# ---------------------------------------------------------------
-	def run_dynamics(self, n_steps, output=False, debug=False):
+	def run_dynamics(self, 
+                  	n_steps: float,
+                    t_th:float = 0, 
+                    output: bool = False,
+                    debug: bool = False):
+     
 		"""Esegue la dinamica molecolare per `n_steps` step."""
 
 		if output:
@@ -138,28 +147,53 @@ class CrystalDynamicsNumpy:
 
 		if getattr(self.crystal, "neighbour_matrix", None) is None:
 			print(
-				f"⚠️  Vicini non calcolati in precedenza. Calcolo con R_C={self.crystal.R_C}."
+				f"⚠️ Vicini non calcolati in precedenza. " + \
+        		f"Calcolo con R_C={self.crystal.R_C} e R_P={self.crystal.R_P}."
+                
 			)
-			self.crystal.find_neighbours_numpy()
+			self.crystal.find_neighbours_numba()
+			#self.crystal.find_neighbours_numpy()
+   
+		if np.isinf(self.crystal.R_P) is False:
+			poly7 = PolynomialJunction(
+				R_C=self.crystal.R_C,
+				R_P=self.crystal.R_P,  # punto di giunzione
+				epsilon=0.345,  # eV
+				sigma=2.644,  # Å
+			)
+		else:
+			poly7 = None
 
 		if self.velocities is None:
 			self._random_velocities()
 
 		if self.old_force is None:
-			self.old_force = CrystalPotential(self.crystal).compute_forces_numpy()
+			self.old_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces_numba()
+			#self.old_force = CrystalPotential(self.crystal).compute_forces_numpy()
+		
 
 		meta_E_tot = []
 		meta_E_K = []
 		meta_T = []
 
+		# LOOP TERMALIZZAZIONE
+		steps_th = int(t_th / self.dt)
+		for step in range(steps_th):
+			self._update_positions()
+			self._update_neighbours()
+			self._update_forces(poly7=poly7)
+			self._update_velocities()
+   
+		#for step in range(steps_th, n_steps):
 		for step in range(n_steps):
 			self._update_positions()
 			self._update_neighbours()
-			self._update_forces()
+			self._update_forces(poly7=poly7)
 			self._update_velocities()
 
 			potential_energy = CrystalPotential(
-				self.crystal
+				self.crystal,
+				poly7=poly7,
 			).compute_potential_numpy()
 			temp = self._temperature()
 
@@ -187,4 +221,3 @@ class CrystalDynamicsNumpy:
 				self._output_positions(out_dir, step, n_steps)
 
 		return meta_E_tot, meta_E_K, meta_T
-

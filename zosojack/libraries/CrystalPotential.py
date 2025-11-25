@@ -1,6 +1,75 @@
-from libraries.CrystalStructure import CrystalStructure
+# CrystalPotential.py
 import numpy as np
+from numba import njit
 
+from libraries.CrystalStructure import CrystalStructure
+from libraries.PolynomialJunction import PolynomialJunction
+
+@njit(cache=True, fastmath=True)
+def _potential_kernel(dist_matrix, neighbour_mask, second_mask, sigma, epsilon, coeffs):
+    pot = 0.0
+    N = dist_matrix.shape[0]
+    for i in range(N):
+        for j in range(i + 1, N):  # conti solo coppie (i<j) per evitare 1/2
+            r = dist_matrix[i, j]
+            if not np.isfinite(r) or r == 0.0:
+                continue
+
+            if neighbour_mask[i, j]:
+                inv_r = 1.0 / r
+                inv_r6 = (sigma * inv_r) ** 6
+                inv_r12 = inv_r6 * inv_r6
+                pot += 4.0 * epsilon * (inv_r12 - inv_r6)
+            elif second_mask[i, j] and coeffs is not None:
+                A,B,C,D,E,F,G,H = coeffs
+                pot += A + B*r + C*r**2 + D*r**3 + E*r**4 + F*r**5 + G*r**6 + H*r**7
+    return pot
+    
+@njit(cache=True)
+def _forces_kernel(positions, dist_matrix, neighbour_mask, second_mask, sigma, epsilon, coeffs):
+    N = positions.shape[0]
+    forces = np.zeros((N, 3), dtype=np.float64)
+    s6 = sigma**6
+
+    for i in range(N):
+        xi0, yi0, zi0 = positions[i, 0], positions[i, 1], positions[i, 2]
+        for j in range(N):
+            if i == j:
+                continue
+            r = dist_matrix[i, j]
+            if not np.isfinite(r) or r == 0.0:
+                continue
+
+            dx = xi0 - positions[j, 0]
+            dy = yi0 - positions[j, 1]
+            dz = zi0 - positions[j, 2]
+
+            if neighbour_mask[i, j]:
+                inv_r = 1.0 / r
+                inv_r2 = inv_r * inv_r
+                inv_r6 = inv_r2 * inv_r2 * inv_r2
+                term = (2.0 * s6 * inv_r6) - 1.0
+                inv_r8 = inv_r6 * inv_r2
+                Fscalar = 24.0 * epsilon * s6 * term * inv_r8
+                forces[i, 0] += Fscalar * dx
+                forces[i, 1] += Fscalar * dy
+                forces[i, 2] += Fscalar * dz
+            elif second_mask[i, j] and coeffs is not None:
+                # derivata polinomio: B + 2Cr + 3Dr^2 + ... + 7Hr^6
+                B,C,D,E,F,G,H = coeffs[1], coeffs[2], coeffs[3], coeffs[4], coeffs[5], coeffs[6], coeffs[7]
+                r2 = r * r
+                r3 = r2 * r
+                r4 = r3 * r
+                r5 = r4 * r
+                r6 = r5 * r
+                dVdr = B + 2*C*r + 3*D*r2 + 4*E*r3 + 5*F*r4 + 6*G*r5 + 7*H*r6
+                Fscalar = -dVdr / r
+                forces[i, 0] += Fscalar * dx
+                forces[i, 1] += Fscalar * dy
+                forces[i, 2] += Fscalar * dz
+
+    return forces
+    
 class CrystalPotential:
     """
     Classe per calcolare il potenziale e le forze in una struttura cristallina.
@@ -12,152 +81,39 @@ class CrystalPotential:
     def __init__(self, 
                  crystal: CrystalStructure, 
                  sigma: float = 2.644, 
-                 epsilon: float = 0.345):
+                 epsilon: float = 0.345,
+                 poly7: PolynomialJunction = None):
         self.crystal = crystal  # oggetto CrystalStructure
         self.sigma   = sigma
         self.epsilon = epsilon
-
-    def compute_potential(self):
-            """
-            Calcola il potenziale di Lennard-Jones per ogni atomo.
-            Il potenziale dipende dai parametri A, B e, indirettamente, dalla distanza di
-            taglio R_C, usata per trovare i vicini.
-            Restituisce il potenziale totale del sistema.
-            """
-            def _lennard_jones_ij(r_ij):
-                twelve = (self.sigma/r_ij)**12
-                six = (self.sigma/r_ij)**6
-                return 4*self.epsilon*(twelve - six)
-            
-            potenziale = 0
-            for i, atom_neighbours in enumerate(self.crystal.which_neighbour):
-                for j, neighbour_index in enumerate(atom_neighbours):
-                    if i != neighbour_index:
-                        d_ij = self.crystal.how_distant[i][j]
-                        potenziale += _lennard_jones_ij(d_ij)
-                
-            self.crystal.potential = potenziale / 2
-            return self.crystal.potential
+        self.poly7 = poly7  # polinomio di settimo grado per la giunzione polinomiale
+    # ---------------------------------------------------------------
         
-    def compute_potential_numpy(self):
-        """
-        Versione vettoriale di compute_potential che usa self.crystal.distance_matrix e
-        self.crystal.neighbour_matrix. Restituisce il potenziale totale.
-        """
-        # assicurati che le matrici dei vicini siano presenti
-        mask = getattr(self.crystal, "neighbour_matrix", None)
-        dist = getattr(self.crystal, "distance_matrix", None)
-        if mask is None or dist is None:
-            # prova a calcolare i vicini se disponibile la versione numpy
-            if hasattr(self.crystal, "find_neighbours_numpy"):
-                self.crystal.find_neighbours_numpy(self.crystal.R_C)
-                mask = self.crystal.neighbour_matrix
-                dist = self.crystal.distance_matrix
-            else:
-                raise RuntimeError("distance_matrix o neighbour_matrix mancanti; esegui prima find_neighbours_numpy()")
+    def compute_potential_numba(self):
+        mask_first = self.crystal.neighbour_matrix
+        mask_second = self.crystal.second_neighbour_matrix
+        dist = self.crystal.distance_matrix
 
-        # estrai distanze solo per le coppie considerate vicine
-        r = dist[mask]  # vettore delle distanze r_ij per cui mask è True
-        if r.size == 0:
-            pot = 0.0
-        else:
-            s = self.sigma
-            e = self.epsilon
-            # calcolo vettoriale del LJ
-            phi = 4.0 * e * ( (s / r)**12 - (s / r)**6 )
-            pot = 0.5 * np.sum(phi)   # fattore 1/2 per evitare doppio conto
+        coeffs = None
+        if self.poly7 is not None:
+            coeffs = np.array([self.poly7.A, self.poly7.B, self.poly7.C, self.poly7.D,
+                            self.poly7.E, self.poly7.F, self.poly7.G, self.poly7.H], dtype=np.float64)
 
+        pot = _potential_kernel(dist, mask_first, mask_second, self.sigma, self.epsilon, coeffs)
         self.crystal.potential = float(pot)
         return self.crystal.potential
 
+    def compute_forces_numba(self):
+        pos = np.asarray(self.crystal.positions, dtype=np.float64)
+        dist = self.crystal.distance_matrix
+        m1 = self.crystal.neighbour_matrix
+        m2 = self.crystal.second_neighbour_matrix
 
-    def compute_forces(self):
-        """
-        Versione che utilizza list.
-        Calcola le forze sugli atomi dovute al potenziale di Lennard-Jones (F = -∇V).
-        Restituisce una lista di vettori forza per ogni atomo.
-        """
+        coeffs = None
         
-        def _addendo_derivata_lennard_jones(q_i, q_k, r_ik):
-            return 1/(r_ik**8) * ( (2*self.sigma**6)/(r_ik**6) - 1 ) * (q_i - q_k)
-            
-        vec_forza = [] # ciascun entrata è un atomo, ciascun atomo è una lista di tre entrate
-        for i, atom_neighbours in enumerate(self.crystal.which_neighbour):
-            forza_x, forza_y, forza_z = 0, 0, 0
-            for j, neighbour_index in enumerate(atom_neighbours):
-                d_ij = self.crystal.how_distant[i][j]
-                forza_x += _addendo_derivata_lennard_jones(self.crystal.vec_x[i], self.crystal.vec_x[neighbour_index], d_ij)
-                forza_y += _addendo_derivata_lennard_jones(self.crystal.vec_y[i], self.crystal.vec_y[neighbour_index], d_ij)
-                forza_z += _addendo_derivata_lennard_jones(self.crystal.vec_z[i], self.crystal.vec_z[neighbour_index], d_ij)
-            forza_x *= 24 * self.epsilon * self.sigma**6
-            forza_y *= 24 * self.epsilon * self.sigma**6
-            forza_z *= 24 * self.epsilon * self.sigma**6
-            vec_forza.append([forza_x, forza_y, forza_z])
-            
-        return vec_forza
+        if self.poly7 is None and np.isinf(self.crystal.R_P) is False:
+                raise ValueError("PolynomialJunction non definito per le seconde vicine.")
+        elif self.poly7 is not None:
+            coeffs = np.array([self.poly7.A, self.poly7.B, self.poly7.C, self.poly7.D, self.poly7.E, self.poly7.F, self.poly7.G, self.poly7.H], dtype=np.float64)
 
-    def compute_forces_numpy(self):
-        """
-        Versione vettoriale di compute_forces_matrix che usa 
-        self.crystal.distance_matrix e self.crystal.neighbour_matrix.
-        Restituisce una matrice (N,3) con le forze su ciascun atomo.
-        """
-        pos = np.asarray(self.crystal.positions, dtype=float)  # (N,3)
-        n = pos.shape[0]
-
-        mask = getattr(self.crystal, "neighbour_matrix", None)
-        dist = getattr(self.crystal, "distance_matrix", None)
-
-        if mask is None or dist is None:
-            if hasattr(self.crystal, "find_neighbours_numpy"):
-                self.crystal.find_neighbours_numpy()
-                mask = self.crystal.neighbour_matrix
-                dist = self.crystal.distance_matrix
-            else:
-                # fallback: costruisci distanze da pos e usa R_C
-                diffs_tmp = pos[:, None, :] - pos[None, :, :]
-                dist = np.linalg.norm(diffs_tmp, axis=2)
-                mask = (dist <= self.crystal.R_C) & (~np.eye(n, dtype=bool))
-
-        # differenze vettoriali e distanze
-        diffs = pos[:, None, :] - pos[None, :, :]   # (N,N,3)
-        r = np.asarray(dist, dtype=float)           # (N,N)
-
-        # coefficiente del termine
-        coeff = 24.0 * self.epsilon * (self.sigma ** 6)
-
-        # calcola lo scalare per le coppie considerate (evita divisioni per zero)
-        scalar = np.zeros_like(r)
-        idx = mask
-        if np.any(idx):
-            r_idx = r[idx]
-            inv_r8 = 1.0 / (r_idx ** 8)
-            term = (2.0 * (self.sigma ** 6) / (r_idx ** 6)) - 1.0
-            scalar[idx] = coeff * inv_r8 * term
-
-        # moltiplica per il vettore differenza e somma sulle colonne j per ottenere la forza su i
-        forces = np.sum(scalar[..., None] * diffs, axis=1)  # (N,3)
-
-        return forces
-    
-    
-    def compute_forces_matrix(self):
-        """
-        Versione che utilizza matrici numpy.
-        Calcola le forze sugli atomi dovute al potenziale di Lennard-Jones (F = -∇V).
-        Restituisce una matrice Nx3 di forze per ogni atomo.
-        """
-        
-        def addendo_derivata_lennard_jones(q_i, q_k, r_ik):
-            return 1/(r_ik**8) * ( (2*self.sigma**6)/(r_ik**6) - 1 ) * (q_i - q_k)
-            
-        mat_forza = np.zeros((self.crystal.N_atoms, 3)) # ciascuna riga è un atomo, ognuna con tre colonne
-        for i, atom_neighbours in enumerate(self.crystal.which_neighbour):
-            for j, neighbour_index in enumerate(atom_neighbours):
-                d_ij = self.crystal.how_distant[i][j]
-                mat_forza[i, 0] += addendo_derivata_lennard_jones(self.crystal.vec_x[i], self.crystal.vec_x[neighbour_index], d_ij)
-                mat_forza[i, 1] += addendo_derivata_lennard_jones(self.crystal.vec_y[i], self.crystal.vec_y[neighbour_index], d_ij)
-                mat_forza[i, 2] += addendo_derivata_lennard_jones(self.crystal.vec_z[i], self.crystal.vec_z[neighbour_index], d_ij)
-        mat_forza *= 24 * self.epsilon * self.sigma**6
-
-        return mat_forza
+        return _forces_kernel(pos, dist, m1, m2, self.sigma, self.epsilon, coeffs)
