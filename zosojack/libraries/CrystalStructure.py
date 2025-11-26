@@ -1,19 +1,20 @@
 # CrystalStructure.py 
 import numpy as np
 from numba import njit
+import copy
 
 @njit(cache=True)
-def _neighbour_masks_kernel(pos, R_P, R_C):
-    N = pos.shape[0]
+def _neighbour_masks_kernel(positions, R_P, R_C):
+    N = positions.shape[0]
     neighbour = np.zeros((N, N), dtype=np.bool_)
     second = np.zeros((N, N), dtype=np.bool_)
-    dist = np.full((N, N), np.inf)
+    dist = np.full((N, N), np.inf) # inf se non vicini, 0 se stessi
     for i in range(N):
-        xi, yi, zi = pos[i, 0], pos[i, 1], pos[i, 2]
+        x_i, y_i, z_i = positions[i, 0], positions[i, 1], positions[i, 2]
         for j in range(i + 1, N):
-            dx = xi - pos[j, 0]
-            dy = yi - pos[j, 1]
-            dz = zi - pos[j, 2]
+            dx = x_i - positions[j, 0] # x_i - x_j
+            dy = y_i - positions[j, 1]
+            dz = z_i - positions[j, 2]
             rij = np.sqrt(dx*dx + dy*dy + dz*dz)
             if rij <= R_C:
                 dist[i, j] = dist[j, i] = rij
@@ -44,9 +45,7 @@ class CrystalStructure:
     def __init__(self, positions):
         self.positions = positions  # matrice Nx3 delle posizioni
         self.N_atoms = positions.shape[0]  # numero totale di atomi
-        self.N_neighbours = None  # numero di primi vicini per ogni atomo
-        self.which_neighbour = None  # indici dei primi vicini per ogni atomo
-        self.how_distant = None  # distanze tra i primi vicini per ogni atomo
+        self.neighbours_computed = False 
         self.R_C = np.inf  # distanza di taglio usata per trovare i vicini
         self.R_P = np.inf  # punto di giunzione polinomiale
         
@@ -77,6 +76,9 @@ class CrystalStructure:
     def vec_z(self):
         return self.positions[:, 2]
     
+    def copy(self):
+        return copy.deepcopy(self)
+    
     # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
     # METODI 
     # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
@@ -95,25 +97,44 @@ class CrystalStructure:
         self.R_P = R_P
     
     def find_neighbours_numba(self):
-        pos = np.asarray(self.positions, dtype=np.float64)
-        neighbour, second, dist = _neighbour_masks_kernel(pos, self.R_P, self.R_C)
+        positions = np.asarray(self.positions, dtype=np.float64)
+        neighbour, second, dist = _neighbour_masks_kernel(positions, self.R_P, self.R_C)
         self.neighbour_matrix = neighbour
         self.second_neighbour_matrix = second
         self.distance_matrix = dist
-    
+        self.neighbours_computed = True
+        
+        if np.isfinite(self.R_P):
+            print()
 
     def print_neighbours(self, index=None):
         """
-        Stampa l'attributo which_neighbour che contiene gli indici dei primi vicini per ogni atomo.
+        Stampa gli indici dei primi vicini per ogni atomo o di uno nello specifico.
         """
-        if self.which_neighbour is None:
+        if not self.neighbours_computed:
             print("Prima di chiamare questo metodo, esegui find_neighbours(R_C)")
             return None
         
         if index is not None:
-            print(f"Vicini dell'atomo {index}: {self.which_neighbour[index]}")
+            # basta dire quali sono i True sulla riga index di neighbour_matrix:
+            print(f"Vicini dell'atomo {index}: {np.where(self.neighbour_matrix[index])[0]}")
             return None
         else:
             print("Indici dei vicini per ogni atomo:")
-            for i, neighbours in enumerate(self.which_neighbour):
-                print(f"Atomo {i}, n_neigh={self.N_neighbours[i]}: {neighbours}")
+            for i in range(self.N_atoms):
+                print(f"Atomo {i}, n_neigh={np.sum(self.neighbour_matrix[i])}: {np.where(self.neighbour_matrix[i])[0]}")
+                
+    def print_second_neighbours(self, index=None):
+        if not self.neighbours_computed:
+            print("Prima di chiamare questo metodo, esegui find_neighbours(R_C)")
+            return None 
+        if np.isfinite(self.R_P) is False:
+            print("R_P non definito; assegnarlo con CrystalStructure.set_R_P ed eseguire find_neighbours_numba().")
+            return None
+        if index is not None:
+            print(f"Secondi vicini dell'atomo {index}: {np.where(self.second_neighbour_matrix[index])[0]}")
+            return None
+        else:
+            print("Indici dei secondi vicini per ogni atomo:")
+            for i in range(self.N_atoms):
+                print(f"Atomo {i}, n_2nd_neigh={np.sum(self.second_neighbour_matrix[i])}: {np.where(self.second_neighbour_matrix[i])[0]}")

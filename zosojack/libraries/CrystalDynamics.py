@@ -15,7 +15,7 @@ from libraries.CrystalPotential import CrystalPotential
 from libraries.PolynomialJunction import PolynomialJunction
 
 
-# Costanti fisiche (come in CrystalDynamics.py)
+# Costanti fisiche 
 k_B = 1 / 11603  # eV/K
 N_A = 1.66053906660E-27  # numero di Avogadro
 
@@ -46,7 +46,7 @@ class CrystalDynamics:
 		self.potential_E = None
 
 	# ---------------------------------------------------------------
-	# Utility private (copiate dall'implementazione classica)
+	# Utility private
 	# ---------------------------------------------------------------
 	def set_seed(self, myseed):
 		"""Imposta il seed del generatore pseudo-casuale."""
@@ -150,7 +150,7 @@ class CrystalDynamics:
 			)
 			self.crystal.find_neighbours_numba()
    
-		if np.isinf(self.crystal.R_P) is False:
+		if np.isfinite(self.crystal.R_P):
 			poly7 = PolynomialJunction(
 				R_C=self.crystal.R_C,
 				R_P=self.crystal.R_P,  # punto di giunzione
@@ -178,8 +178,7 @@ class CrystalDynamics:
 			self._update_forces(poly7=poly7)
 			self._update_velocities()
    
-		#for step in range(steps_th, n_steps):
-		for step in range(n_steps):
+		for step in range(steps_th, n_steps):
 			self._update_positions()
 			self._update_neighbours()
 			self._update_forces(poly7=poly7)

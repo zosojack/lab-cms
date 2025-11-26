@@ -14,7 +14,7 @@ def _potential_kernel(dist_matrix, neighbour_mask, second_mask, sigma, epsilon, 
             r = dist_matrix[i, j]
             if not np.isfinite(r) or r == 0.0:
                 continue
-
+            
             if neighbour_mask[i, j]:
                 inv_r = 1.0 / r
                 inv_r6 = (sigma * inv_r) ** 6
@@ -22,7 +22,35 @@ def _potential_kernel(dist_matrix, neighbour_mask, second_mask, sigma, epsilon, 
                 pot += 4.0 * epsilon * (inv_r12 - inv_r6)
             elif second_mask[i, j] and coeffs is not None:
                 A,B,C,D,E,F,G,H = coeffs
-                pot += A + B*r + C*r**2 + D*r**3 + E*r**4 + F*r**5 + G*r**6 + H*r**7
+                r2 = r * r
+                r3 = r2 * r
+                r4 = r3 * r
+                r5 = r4 * r
+                r6 = r5 * r
+                pot += A + B*r + C*r2 + D*r3 + E*r4 + F*r5 + G*r6 + H*r6*r
+            '''
+            # FIXME: rimettere il codice sopra al posto di questo sotto
+            if coeffs is not None:
+                if second_mask[i, j]:
+                    
+                    A,B,C,D,E,F,G,H = coeffs
+                    r2 = r * r
+                    r3 = r2 * r
+                    r4 = r3 * r
+                    r5 = r4 * r
+                    r6 = r5 * r
+                    val = A + B*r + C*r2 + D*r3 + E*r4 + F*r5 + G*r6 + H*r6*r
+                    pot += val
+                    print(val)
+            else:
+                if neighbour_mask[i, j]:
+                    inv_r = 1.0 / r
+                    inv_r6 = (sigma * inv_r) ** 6
+                    inv_r12 = inv_r6 * inv_r6
+                    pot += 4.0 * epsilon * (inv_r12 - inv_r6)
+            # FIXME: - - - - - - - - - - - - - - - - - - - - - - - -
+            '''
+            
     return pot
     
 @njit(cache=True)
@@ -32,7 +60,7 @@ def _forces_kernel(positions, dist_matrix, neighbour_mask, second_mask, sigma, e
     s6 = sigma**6
 
     for i in range(N):
-        xi0, yi0, zi0 = positions[i, 0], positions[i, 1], positions[i, 2]
+        x_i, y_i, z_i = positions[i, 0], positions[i, 1], positions[i, 2]
         for j in range(N):
             if i == j:
                 continue
@@ -40,9 +68,9 @@ def _forces_kernel(positions, dist_matrix, neighbour_mask, second_mask, sigma, e
             if not np.isfinite(r) or r == 0.0:
                 continue
 
-            dx = xi0 - positions[j, 0]
-            dy = yi0 - positions[j, 1]
-            dz = zi0 - positions[j, 2]
+            dx = x_i - positions[j, 0] # x_i - x_j
+            dy = y_i - positions[j, 1]
+            dz = z_i - positions[j, 2]
 
             if neighbour_mask[i, j]:
                 inv_r = 1.0 / r
@@ -90,20 +118,34 @@ class CrystalPotential:
     # ---------------------------------------------------------------
         
     def compute_potential_numba(self):
+        # assicuriamoci che esista tutto
+        if getattr(self.crystal, "distance_matrix", None) is None or \
+        getattr(self.crystal, "neighbour_matrix", None) is None or \
+        getattr(self.crystal, "second_neighbour_matrix", None) is None:
+            self.crystal.find_neighbours_numba()
+        
         mask_first = self.crystal.neighbour_matrix
         mask_second = self.crystal.second_neighbour_matrix
         dist = self.crystal.distance_matrix
 
         coeffs = None
-        if self.poly7 is not None:
-            coeffs = np.array([self.poly7.A, self.poly7.B, self.poly7.C, self.poly7.D,
-                            self.poly7.E, self.poly7.F, self.poly7.G, self.poly7.H], dtype=np.float64)
-
+        
+        if self.poly7 is None and np.isfinite(self.crystal.R_P):
+                raise ValueError("PolynomialJunction non definito per le seconde vicine.")
+        elif self.poly7 is not None:
+            coeffs = self.poly7.coeffs_array
+            
         pot = _potential_kernel(dist, mask_first, mask_second, self.sigma, self.epsilon, coeffs)
         self.crystal.potential = float(pot)
         return self.crystal.potential
 
     def compute_forces_numba(self):
+        # assicuriamoci che esista tutto
+        if getattr(self.crystal, "distance_matrix", None) is None or \
+        getattr(self.crystal, "neighbour_matrix", None) is None or \
+        getattr(self.crystal, "second_neighbour_matrix", None) is None:
+            self.crystal.find_neighbours_numba()
+            
         pos = np.asarray(self.crystal.positions, dtype=np.float64)
         dist = self.crystal.distance_matrix
         m1 = self.crystal.neighbour_matrix
@@ -111,9 +153,9 @@ class CrystalPotential:
 
         coeffs = None
         
-        if self.poly7 is None and np.isinf(self.crystal.R_P) is False:
+        if self.poly7 is None and np.isfinite(self.crystal.R_P):
                 raise ValueError("PolynomialJunction non definito per le seconde vicine.")
         elif self.poly7 is not None:
-            coeffs = np.array([self.poly7.A, self.poly7.B, self.poly7.C, self.poly7.D, self.poly7.E, self.poly7.F, self.poly7.G, self.poly7.H], dtype=np.float64)
+            coeffs = self.poly7.coeffs_array
 
         return _forces_kernel(pos, dist, m1, m2, self.sigma, self.epsilon, coeffs)

@@ -13,21 +13,8 @@ class SteepestDescend:
     def __init__ (self, crystal: CrystalStructure):
         self.crystal = crystal
         
-        
-    def _output_state(self, filename, step, E_pot, F_max):
-        """Scrive lo stato della simulazione (come in CrystalDynamics)."""
-
-        with open(filename, "w") as f:
-            f.write(f"{step} \t {E_pot} \t {F_max}")
-        
-    def _output_positions(self, foldername, step):
-            """Salva le posizioni finali (stesso formato dell'originale)."""
             
-            filename = foldername / (f"fcc100a{self.crystal.N_atoms}_1.txt")
-            np.savetxt(filename, self.crystal.positions, comments="")
-            
-            
-    def minimize_energy(self, max_steps=1000, F_tol=1e-5, C_steep=0.01, pol_junction=False, output=False):
+    def minimize_energy(self, max_steps=1000, F_tol=1e-5, C_steep=0.01, pol_junction=False):
         
         if getattr(self.crystal, "neighbour_matrix", None) is None:
             print(
@@ -37,15 +24,9 @@ class SteepestDescend:
             )
             self.crystal.find_neighbours_numba()
         
-        # Predisposizione output
-        if output:
-            out_dir = Path(
-                f"output/min_positions/max_s{max_steps}~C{C_steep}~F_t{F_tol}~Ag~{self.crystal.N_atoms}"
-            )
-            out_dir.mkdir(parents=True, exist_ok=True)
-            state_file = out_dir / "energy.txt"
-                        
-            n_print = 10
+        # Array forza massima e energia
+        max_forces_list = []
+        potential_energies_list = []
         
         for step in range (max_steps):
             
@@ -63,8 +44,11 @@ class SteepestDescend:
                 potenziale = CrystalPotential(self.crystal)
                 forces = potenziale.compute_forces_numba()
             potential_energy = potenziale.compute_potential_numba()
-            
+                    
             max_force = np.max(np.linalg.norm(forces, axis=1))
+            
+            potential_energies_list.append(potential_energy)
+            max_forces_list.append(max_force)
             
             if max_force < F_tol:
                 print(f"Converged in {step} steps.")
@@ -77,14 +61,6 @@ class SteepestDescend:
             
             if step == max_steps - 1:
                 print("Maximum number of steps reached without convergence.")
-                
             
-            if output and step % n_print == 0:
-                self._output_state(
-                    state_file,
-                    step,
-                    potential_energy,
-                    max_force,
-                )
-        if output:
-            self._output_positions(out_dir)
+            
+        return np.array(potential_energies_list), np.array(max_forces_list)
