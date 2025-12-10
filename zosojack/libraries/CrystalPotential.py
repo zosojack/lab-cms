@@ -5,13 +5,20 @@ from numba import njit
 from libraries.CrystalStructure import CrystalStructure
 from libraries.PolynomialJunction import PolynomialJunction
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True)
 def _potential_kernel(dist_matrix, neighbour_mask, second_mask, sigma, epsilon, coeffs):
     pot = 0.0
     N = dist_matrix.shape[0]
+    
+    # scompatto una volta sola i coefficienti del polinomio, se c'è
+    if coeffs is not None:
+        A,B,C,D,E,F,G,H = coeffs
+        
     for i in range(N):
         for j in range(i + 1, N):  # conti solo coppie (i<j) per evitare 1/2
             r = dist_matrix[i, j]
+            # salta se distanza non definita o zero
+            # ad esempio quando un atomo è nella Verlet Cage (r < R_V), ma fuori da R_C
             if not np.isfinite(r) or r == 0.0:
                 continue
             
@@ -20,57 +27,47 @@ def _potential_kernel(dist_matrix, neighbour_mask, second_mask, sigma, epsilon, 
                 inv_r6 = (sigma * inv_r) ** 6
                 inv_r12 = inv_r6 * inv_r6
                 pot += 4.0 * epsilon * (inv_r12 - inv_r6)
-            elif second_mask[i, j] and coeffs is not None:
-                A,B,C,D,E,F,G,H = coeffs
-                r2 = r * r
-                r3 = r2 * r
-                r4 = r3 * r
-                r5 = r4 * r
-                r6 = r5 * r
-                pot += A + B*r + C*r2 + D*r3 + E*r4 + F*r5 + G*r6 + H*r6*r
-            '''
-            # FIXME: rimettere il codice sopra al posto di questo sotto
-            if coeffs is not None:
-                if second_mask[i, j]:
-                    
-                    A,B,C,D,E,F,G,H = coeffs
-                    r2 = r * r
-                    r3 = r2 * r
-                    r4 = r3 * r
-                    r5 = r4 * r
-                    r6 = r5 * r
-                    val = A + B*r + C*r2 + D*r3 + E*r4 + F*r5 + G*r6 + H*r6*r
-                    pot += val
-                    print(val)
             else:
-                if neighbour_mask[i, j]:
-                    inv_r = 1.0 / r
-                    inv_r6 = (sigma * inv_r) ** 6
-                    inv_r12 = inv_r6 * inv_r6
-                    pot += 4.0 * epsilon * (inv_r12 - inv_r6)
-            # FIXME: - - - - - - - - - - - - - - - - - - - - - - - -
-            '''
-            
+                # Se r è finito e non è neighbour, è per forza un secondo vicino attivo.
+                # Non serve leggere la matrice 'second_mask' (risparmio memoria)   
+                 
+                if coeffs is not None:
+                    # polinomio: A + B*r + C*r2 + D*r3 + ... + H*r6*r
+                    # r2 = r * r, r3 = r2 * r, r4 = r3 * r, r5 = r4 * r, r6 = r5 * r
+                    # pot += A + B*r + C*r2 + D*r3 + E*r4 + F*r5 + G*r6 + H*r6*r # NOTE: NORMALE
+                    pot += A + r * (B + r * (C + r * (D + r * (E + r * (F + r * (G + r * H)))))) # HACK: METODO HORNER
     return pot
     
 @njit(cache=True)
-def _forces_kernel(positions, dist_matrix, neighbour_mask, second_mask, sigma, epsilon, coeffs):
+def _forces_kernel(positions, dist_matrix, neighbour_mask, second_mask, sigma, epsilon, coeffs, pcb):
     N = positions.shape[0]
     forces = np.zeros((N, 3), dtype=np.float64)
     s6 = sigma**6
+    
+    # scompatto una volta sola i coefficienti del polinomio, se c'è
+    if coeffs is not None:
+        _,B,C,D,E,F,G,H = coeffs
+        
+    if pcb is not None:
+        Lx, Ly, Lz = pcb[0], pcb[1], pcb[2]
 
     for i in range(N):
         x_i, y_i, z_i = positions[i, 0], positions[i, 1], positions[i, 2]
         for j in range(N):
-            if i == j:
-                continue
+            
             r = dist_matrix[i, j]
+            # salta se distanza non definita o zero
+            # ad esempio quando un atomo è nella Verlet Cage (r < R_V), ma fuori da R_C
             if not np.isfinite(r) or r == 0.0:
                 continue
 
             dx = x_i - positions[j, 0] # x_i - x_j
             dy = y_i - positions[j, 1]
             dz = z_i - positions[j, 2]
+            # considero anche la periodicità al contorno
+            dx -= Lx * np.round(dx / Lx)
+            dy -= Ly * np.round(dy / Ly)
+            dz -= Lz * np.round(dz / Lz)
 
             if neighbour_mask[i, j]:
                 inv_r = 1.0 / r
@@ -79,22 +76,21 @@ def _forces_kernel(positions, dist_matrix, neighbour_mask, second_mask, sigma, e
                 term = (2.0 * s6 * inv_r6) - 1.0
                 inv_r8 = inv_r6 * inv_r2
                 Fscalar = 24.0 * epsilon * s6 * term * inv_r8
-                forces[i, 0] += Fscalar * dx
-                forces[i, 1] += Fscalar * dy
-                forces[i, 2] += Fscalar * dz
-            elif second_mask[i, j] and coeffs is not None:
-                # derivata polinomio: B + 2Cr + 3Dr^2 + ... + 7Hr^6
-                B,C,D,E,F,G,H = coeffs[1], coeffs[2], coeffs[3], coeffs[4], coeffs[5], coeffs[6], coeffs[7]
-                r2 = r * r
-                r3 = r2 * r
-                r4 = r3 * r
-                r5 = r4 * r
-                r6 = r5 * r
-                dVdr = B + 2*C*r + 3*D*r2 + 4*E*r3 + 5*F*r4 + 6*G*r5 + 7*H*r6
-                Fscalar = -dVdr / r
-                forces[i, 0] += Fscalar * dx
-                forces[i, 1] += Fscalar * dy
-                forces[i, 2] += Fscalar * dz
+            else:
+                # Se r è finito e non è neighbour, è per forza un secondo vicino attivo.
+                # Non serve leggere la matrice 'second_mask' (risparmio memoria)
+                
+                if coeffs is not None:
+                    # derivata polinomio: B + 2Cr + 3Dr^2 + ... + 7Hr^6
+                    # r2 = r * r, r3 = r2 * r, r4 = r3 * r, r5 = r4 * r, r6 = r5 * r
+                    # dVdr = B + 2*C*r + 3*D*r2 + 4*E*r3 + 5*F*r4 + 6*G*r5 + 7*H*r6 # NOTE: NORMALE
+                    dVdr = B + r * (2*C + r * (3*D + r * (4*E + r * (5*F + r * (6*G + r * 7*H))))) # HACK: METODO HORNER
+                    Fscalar = -dVdr / r
+            
+            # aggiorno le forze  
+            forces[i, 0] += Fscalar * dx
+            forces[i, 1] += Fscalar * dy
+            forces[i, 2] += Fscalar * dz
 
     return forces
     
@@ -122,7 +118,7 @@ class CrystalPotential:
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \
         getattr(self.crystal, "second_neighbour_matrix", None) is None:
-            self.crystal.find_neighbours_numba()
+            self.crystal.find_neighbours()
         
         mask_first = self.crystal.neighbour_matrix
         mask_second = self.crystal.second_neighbour_matrix
@@ -144,12 +140,13 @@ class CrystalPotential:
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \
         getattr(self.crystal, "second_neighbour_matrix", None) is None:
-            self.crystal.find_neighbours_numba()
+            self.crystal.find_neighbours()
             
         pos = np.asarray(self.crystal.positions, dtype=np.float64)
         dist = self.crystal.distance_matrix
         m1 = self.crystal.neighbour_matrix
         m2 = self.crystal.second_neighbour_matrix
+        pcb = self.crystal.pcb
 
         coeffs = None
         
@@ -158,4 +155,4 @@ class CrystalPotential:
         elif self.poly7 is not None:
             coeffs = self.poly7.coeffs_array
 
-        return _forces_kernel(pos, dist, m1, m2, self.sigma, self.epsilon, coeffs)
+        return _forces_kernel(pos, dist, m1, m2, self.sigma, self.epsilon, coeffs, pcb)

@@ -74,14 +74,25 @@ class CrystalDynamics:
 		"""Aggiorna le posizioni con Velocity-Verlet (stessa formula)."""
 
 		acc = self.old_force / self.atomic_mass
-		self.crystal.positions += (
-			self.velocities * self.dt + 0.5 * acc * (self.dt**2)
-		)
+		displacement = self.velocities * self.dt + 0.5 * acc * (self.dt**2)
+		self.crystal.positions += displacement
 
-	def _update_neighbours(self):
-		"""Aggiorna i vicini usando la versione numpy del metodo."""
-
-		self.crystal.find_neighbours_numba()
+	def _update_neighbours_distances(self):
+		"""
+		Aggiorna le distanze tra gli atomi.
+		Se le posizioni non sono cambiate più di un valore soglia, sono ricalcolate soltanto
+		le distanze tra i vicini già noti con only_neighbours_distance().
+		Se le posizioni sono cambiate troppo, il flag neighbours_computed è posto False e
+		viene rieseguito find_neighbours().
+		"""	
+    	# per aumentare la severità del controllo, uso 0.4*(R_V - R_C) invece di 0.5
+		reference_displacement = self.crystal.positions - self.crystal.reference_positions
+		if np.max(np.linalg.norm(reference_displacement, axis=1)) > 0.4 * (self.crystal.R_V - self.crystal.R_C):
+			self.crystal.neighbours_computed = False
+			return self.crystal.only_neighbours_distance()
+		else:	
+			return self.crystal.find_neighbours()
+    
 
 	def _update_forces(self, poly7=None):
 		"""Calcola le forze usando la versione numpy del potenziale."""
@@ -111,7 +122,7 @@ class CrystalDynamics:
 		"""Scrive lo stato della simulazione (come in CrystalDynamics)."""
 
 		with open(filename, "w") as f:
-			f.write(f"{step * self.dt} \t {E_tot} \t {E_pot} \t {E_kin} \t {temp}")
+			f.write(f"{step * self.dt} \t {E_tot} \t {E_pot} \t {E_kin} \t {temp}\n")
 
 	def _output_positions(self, foldername, step, n_steps):
 		"""Salva le posizioni istantanee (stesso formato dell'originale)."""
@@ -130,6 +141,10 @@ class CrystalDynamics:
                   	n_steps: float,
                     t_th:float = 0, 
                     output: bool = False,
+                    n_print: int = 100,
+                    # TODO: Aggiungere un sistema intelligente per il tracking di adatoms
+                    # QUESTO NON È UN MODO INTELLIGENTE
+                    track_last: bool = False, 
                     debug: bool = False):
      
 		"""Esegue la dinamica molecolare per `n_steps` step."""
@@ -140,15 +155,16 @@ class CrystalDynamics:
 			)
 			out_dir.mkdir(parents=True, exist_ok=True)
 			state_file = out_dir / "energy.txt"
-			n_print = 10
+			# TODO: sistemare tracking adatoms in modo intelligente
+			track_file = out_dir / "adatom_track.txt"
+
 
 		if getattr(self.crystal, "neighbour_matrix", None) is None:
 			print(
 				f"⚠️ Vicini non calcolati in precedenza. " + \
         		f"Calcolo con R_C={self.crystal.R_C} e R_P={self.crystal.R_P}."
-                
 			)
-			self.crystal.find_neighbours_numba()
+			self.crystal.find_neighbours()
    
 		if np.isfinite(self.crystal.R_P):
 			poly7 = PolynomialJunction(
@@ -174,13 +190,13 @@ class CrystalDynamics:
 		steps_th = int(t_th / self.dt)
 		for step in range(steps_th):
 			self._update_positions()
-			self._update_neighbours()
+			self._update_neighbours_distances()
 			self._update_forces(poly7=poly7)
 			self._update_velocities()
    
 		for step in range(steps_th, n_steps):
 			self._update_positions()
-			self._update_neighbours()
+			self._update_neighbours_distances()
 			self._update_forces(poly7=poly7)
 			self._update_velocities()
 
@@ -213,4 +229,25 @@ class CrystalDynamics:
 				)
 				self._output_positions(out_dir, step, n_steps)
 
+			if track_last:
+				# se non esiste il file, lo creo con l'header
+				if not track_file.exists():
+							with open(track_file, "w") as f:
+								f.write("step\tx\ty\tz\n")
+				# se esiste, aggiungi posizione ultimo atomo
+				x, y, z = self.crystal.positions[-1]
+				with open(track_file, "a") as f:
+					f.write(f"{step} \t {x} \t {y} \t {z}\n")
+    
+				
+   
 		return meta_E_tot, meta_E_K, meta_T
+
+
+class CrystalDynamicsResult:
+	"""Classe per gestire i risultati di una simulazione di dinamica molecolare."""
+
+	def __init__(self, E_tot, E_kin, final_temperature):
+		self.E_tot = E_tot
+		self.E_kin = E_kin
+		self.final_temperature = final_temperature

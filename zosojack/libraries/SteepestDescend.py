@@ -20,9 +20,8 @@ class SteepestDescend:
             print(
                 f"⚠️ Vicini non calcolati in precedenza. " + \
                 f"Calcolo con R_C={self.crystal.R_C} e R_P={self.crystal.R_P}."
-                
             )
-            self.crystal.find_neighbours_numba()
+            self.crystal.find_neighbours()
         
         # Array forza massima e energia
         max_forces_list = []
@@ -57,7 +56,7 @@ class SteepestDescend:
             # aggiorno posizioni
             self.crystal.positions += C_steep * forces 
             # aggiorno vicini e distanze
-            self.crystal.find_neighbours_numba()
+            self.crystal.find_neighbours()
             
             if step == max_steps - 1:
                 print("Maximum number of steps reached without convergence.")
