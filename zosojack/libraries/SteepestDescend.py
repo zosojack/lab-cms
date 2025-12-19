@@ -9,7 +9,6 @@ from libraries.PolynomialJunction import PolynomialJunction
 
 class SteepestDescend:
     
-    
     def __init__ (self, crystal: CrystalStructure):
         self.crystal = crystal
         

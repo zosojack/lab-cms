@@ -6,13 +6,17 @@ Versione di `CrystalDynamics` che sfrutta le versioni vettoriali
 Il comportamento esterno rimane identico all'implementazione
 originale basata su liste.
 """
+from __future__ import annotations
 
 import numpy as np
 from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Dict, Optional
 
 from libraries.CrystalStructure import CrystalStructure
 from libraries.CrystalPotential import CrystalPotential
 from libraries.PolynomialJunction import PolynomialJunction
+from libraries.io import AtomTracker, XYZwriter
 
 
 # Costanti fisiche 
@@ -28,6 +32,8 @@ class CrystalDynamics:
 		atomic_mass: float = 108,
 		dt: float = 1e-15,
 		temp_ini: float = 20,
+		atom_tracker: Optional[AtomTracker] = None,
+		xyz_writer: Optional[XYZwriter] = None,
 	):
 		# Oggetti
 		self.crystal = crystal  # oggetto CrystalStructure
@@ -44,16 +50,42 @@ class CrystalDynamics:
 		self.temp_final = None
 		self.kinetic_E = None
 		self.potential_E = None
+  
+		# Strumenti di output
+		self.atom_tracker = atom_tracker
+		self.xyz_writer = xyz_writer
 
+	# ---------------------------------------------------------------
+	# Properties - non necessarie ma faccio pratica
+	# ---------------------------------------------------------------
+ 
+	@property
+	def xyz_writer(self):
+		return self._xyz_writer
+
+	@xyz_writer.setter
+	def xyz_writer(self, writer: XYZwriter) -> None:
+		if writer is not None and writer.dump_interval < 10:
+			print("⚠️ Attenzione: dump_interval troppo piccolo può rallentare la simulazione e saturare il disco.")
+		self._xyz_writer = writer
+	
+	@property
+	def atom_tracker(self):
+		return self._atom_tracker
+
+	@atom_tracker.setter
+	def atom_tracker(self, tracker: AtomTracker) -> None:
+		self._atom_tracker = tracker
+        
 	# ---------------------------------------------------------------
 	# Utility private
 	# ---------------------------------------------------------------
-	def set_seed(self, myseed):
+ 
+	def set_seed(self, myseed) -> None:
 		"""Imposta il seed del generatore pseudo-casuale."""
-
 		np.random.seed(myseed)
 
-	def _random_velocities(self):
+	def _random_velocities(self) -> None:
 		"""Inizializza le velocità casuali (stesso algoritmo dell'originale)."""
 
 		N_atoms = self.crystal.N_atoms
@@ -70,14 +102,14 @@ class CrystalDynamics:
 		self.velocities = vel * np.sqrt(self.temp_ini / T_prime)
 		self.kinetic_E = E_K
 
-	def _update_positions(self):
+	def _update_positions(self) -> None:
 		"""Aggiorna le posizioni con Velocity-Verlet (stessa formula)."""
 
 		acc = self.old_force / self.atomic_mass
 		displacement = self.velocities * self.dt + 0.5 * acc * (self.dt**2)
 		self.crystal.positions += displacement
 
-	def _update_neighbours_distances(self):
+	def _update_neighbours_distances(self) -> None:
 		"""
 		Aggiorna le distanze tra gli atomi.
 		Se le posizioni non sono cambiate più di un valore soglia, sono ricalcolate soltanto
@@ -94,12 +126,12 @@ class CrystalDynamics:
 			return self.crystal.find_neighbours()
     
 
-	def _update_forces(self, poly7=None):
+	def _update_forces(self, poly7=None) -> None:
 		"""Calcola le forze usando la versione numpy del potenziale."""
 
 		self.new_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces_numba()
 
-	def _update_velocities(self):
+	def _update_velocities(self) -> None:
 		"""Aggiorna le velocità (formula invariata)."""
 
 		acc_old = self.old_force / self.atomic_mass
@@ -110,7 +142,7 @@ class CrystalDynamics:
   
 		self.old_force = self.new_force
 
-	def _temperature(self):
+	def _temperature(self) -> float:
 		"""Restituisce la temperatura corrente del sistema."""
 
 		if self.kinetic_E is not None:
@@ -118,12 +150,14 @@ class CrystalDynamics:
 		else:
 			return self.temp_ini
 
+	# NOTE: deprecated, usare CrystalDynamicsResult
 	def _output_state(self, filename, step, E_tot, E_pot, E_kin, temp):
 		"""Scrive lo stato della simulazione (come in CrystalDynamics)."""
 
 		with open(filename, "w") as f:
 			f.write(f"{step * self.dt} \t {E_tot} \t {E_pot} \t {E_kin} \t {temp}\n")
 
+	# NOTE: deprecated, usare XYZwriter
 	def _output_positions(self, foldername, step, n_steps):
 		"""Salva le posizioni istantanee (stesso formato dell'originale)."""
 
@@ -145,10 +179,10 @@ class CrystalDynamics:
                     # TODO: Aggiungere un sistema intelligente per il tracking di adatoms
                     # QUESTO NON È UN MODO INTELLIGENTE
                     track_last: bool = False, 
-                    debug: bool = False):
+                    debug: bool = False) -> CrystalDynamicsResult:
      
 		"""Esegue la dinamica molecolare per `n_steps` step."""
-
+	
 		if output:
 			out_dir = Path(
 				f"output/dynamics/steps{n_steps}~dt{self.dt}~T{self.temp_ini}~Ag~{self.crystal.N_atoms}"
@@ -162,7 +196,7 @@ class CrystalDynamics:
 		if getattr(self.crystal, "neighbour_matrix", None) is None:
 			print(
 				f"⚠️ Vicini non calcolati in precedenza. " + \
-        		f"Calcolo con R_C={self.crystal.R_C} e R_P={self.crystal.R_P}."
+        		f"Calcolo con R_C={self.crystal.R_C}, R_P={self.crystal.R_P} e R_V={self.crystal.R_V}."
 			)
 			self.crystal.find_neighbours()
    
@@ -181,54 +215,64 @@ class CrystalDynamics:
 
 		if self.old_force is None:
 			self.old_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces_numba()
-		
-		meta_E_tot = []
-		meta_E_K = []
-		meta_T = []
+	
 
-		# LOOP TERMALIZZAZIONE
+		# LOOP TERMALIZZAZIONE ------------------------------
 		steps_th = int(t_th / self.dt)
 		for step in range(steps_th):
 			self._update_positions()
 			self._update_neighbours_distances()
 			self._update_forces(poly7=poly7)
 			self._update_velocities()
-   
-		for step in range(steps_th, n_steps):
+		# FINE LOOP TERMALIZZAZIONE -------------------------
+	
+		# Vettori per salvare i dati
+		meta_energies_dict = {
+			'total': np.zeros(n_steps - steps_th),
+			'kinetic': np.zeros(n_steps - steps_th),
+			'potential': np.zeros(n_steps - steps_th),
+		}
+		meta_T = np.zeros(n_steps - steps_th)
+		# NOTE: kinetic_E è sempre aggiornata in _update_velocities()
+		# rende tutto un po' confuso 
+  		# perché è l'unica energia ad essere un membro invece che una variabile locale
+		# LOOP DINAMICA -------------------------------------  
+		for step in range(int(n_steps-steps_th)):
 			self._update_positions()
 			self._update_neighbours_distances()
 			self._update_forces(poly7=poly7)
 			self._update_velocities()
 
-			potential_energy = CrystalPotential(
+			potential_energy_now = CrystalPotential(
 				self.crystal,
 				poly7=poly7,
 			).compute_potential_numba()
 			temp = self._temperature()
 
-			E_tot_now = potential_energy + self.kinetic_E
-			meta_E_tot.append(E_tot_now)
-			meta_E_K.append(self.kinetic_E)
-			meta_T.append(temp)
+			E_tot_now = potential_energy_now + self.kinetic_E
+			meta_energies_dict['total'][step] = E_tot_now
+			meta_energies_dict['kinetic'][step] = self.kinetic_E
+			meta_energies_dict['potential'][step] = potential_energy_now
+			meta_T[step] = temp
 
 			if debug:
 				print(
 					f"step {step+1}/{n_steps}: E_tot={E_tot_now:.3f} eV, "
-					f"V={potential_energy:.3f} eV, "
+					f"V={potential_energy_now:.3f} eV, "
 					f"K={self.kinetic_E:.3f} eV, T={temp:.1f} K"
 				)
-
+    
+			# NOTE: deprecated, usare CrystalDynamicsResult e XYZwriter
 			if output and step % n_print == 0:
 				self._output_state(
 					state_file,
 					step,
 					E_tot_now,
-					potential_energy,
-					meta_E_K,
+					potential_energy_now,
+					#meta_E_K,
 					meta_T,
 				)
 				self._output_positions(out_dir, step, n_steps)
-
 			if track_last:
 				# se non esiste il file, lo creo con l'header
 				if not track_file.exists():
@@ -238,16 +282,75 @@ class CrystalDynamics:
 				x, y, z = self.crystal.positions[-1]
 				with open(track_file, "a") as f:
 					f.write(f"{step} \t {x} \t {y} \t {z}\n")
-    
-				
+     
+			# Tracking adatom specifico
+			if self.atom_tracker is not None:
+				self.atom_tracker.record_position(step, self.crystal.positions)
+			# Tracking posizioni
+			if self.xyz_writer is not None:
+				self.xyz_writer.write_frame(step, self.crystal.positions)
+		# FINE LOOP DINAMICA ------------------------------------
+  
+		# Risultati finali
+		result = CrystalDynamicsResult(
+			time_step = self.dt,
+			num_steps = n_steps,
+			steps_th = steps_th,
+			energies = meta_energies_dict,
+			temperatures = meta_T,
+			trajectory_folder_path = self.xyz_writer.output_folder if self.xyz_writer is not None else None,  # Opzionale
+			adatom_file_path = self.atom_tracker.output_path if self.atom_tracker is not None else None, # Opzionale
+		)
    
-		return meta_E_tot, meta_E_K, meta_T
+		return result
 
-
+@dataclass
 class CrystalDynamicsResult:
 	"""Classe per gestire i risultati di una simulazione di dinamica molecolare."""
+ 
+	# --- 1. CAMPI OBBLIGATORI (vanno passati quando crei l'oggetto) ---
+	time_step: float
+	num_steps: int
+	steps_th: int
+	energies: Dict[str, np.ndarray]
+	temperatures: np.ndarray
 
-	def __init__(self, E_tot, E_kin, final_temperature):
-		self.E_tot = E_tot
-		self.E_kin = E_kin
-		self.final_temperature = final_temperature
+	# --- 2. CAMPI OPZIONALI (hanno un valore di default) ---
+	trajectory_folder_path: Optional[str] = None
+	adatom_file_path: Optional[str] = None
+
+	# Per liste/dict vuoti di default, si usa field(default_factory=...)
+	metadata: Dict = field(default_factory=dict)
+
+	# --- 3. CAMPI CALCOLATI (non li passi, li calcola lui) ---
+	# Usiamo init=False per dire "non chiederlo nel costruttore"
+	mean_temp:  float = field(init=False)
+	final_temp: float = field(init=False)
+	mean_E_tot: float = field(init=False)
+	std_E_tot:  float = field(init=False)
+
+	def __post_init__(self):
+		"""
+		Questo metodo viene eseguito automaticamente SUBITO DOPO l'__init__.
+		Usato per calcolare le statistiche derivate (medie e dev st).
+		"""
+		# Calcolo automatico delle temperature
+		self.mean_temp = np.mean(self.temperatures)
+		self.std_temp = np.std(self.temperatures)
+		self.final_temp = self.temperatures[-1]
+		
+		# Calcolo automatico energia (se presente nel dizionario)
+		if 'total' in self.energies:
+			self.mean_E_tot = np.mean(self.energies['total'])
+			self.std_E_tot = np.std(self.energies['total'])
+		else:
+			self.mean_E_tot = np.nan
+			self.std_E_tot = np.nan
+   
+
+	# Metodo extra per stampare info utili
+	def summary(self):
+		return (f"Simulation Result:\n"
+				f"  - Duration: {self.time_step*self.num_steps:.2f} ps\n"
+				f"  - Mean Temp: {self.mean_temp:.2f} K\n"
+				f"  - Mean Energy: {self.mean_E_tot:.2f} eV\n")

@@ -1,7 +1,48 @@
 # CrystalStructure.py 
+from __future__ import annotations
+import psutil
+import warnings
+
 import numpy as np
 from numba import njit
 import copy
+
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+# KERNELS DEI METODI DELLA CLASSE CrystalStructure
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+
+@njit(cache=True)
+def _compute_displacement_matrix(positions):
+    N = positions.shape[0]
+    # N x N x 3: matrice dei vettori spostamento
+    disp = np.zeros((N, N, 3), dtype=np.float64)
+    
+    for i in range(N):
+        x_i, y_i, z_i = positions[i, 0], positions[i, 1], positions[i, 2]
+        # Ottimizzazione: loop solo sul triangolo superiore
+        for j in range(i + 1, N):
+            if i == j:
+                continue
+            dx = x_i - positions[j, 0] 
+            dy = y_i - positions[j, 1]
+            dz = z_i - positions[j, 2]
+            
+            # Riempie [i, j]
+            disp[i, j, 0] = dx
+            disp[i, j, 1] = dy
+            disp[i, j, 2] = dz
+            
+            # Riempie [j, i] con segno opposto (antisimmetria)
+            disp[j, i, 0] = -dx
+            disp[j, i, 1] = -dy
+            disp[j, i, 2] = -dz
+            
+    return disp
+
+def _compute_distance_matrix(positions):
+    disp = _compute_displacement_matrix(positions)
+    dist = np.linalg.norm(disp, axis=2)
+    return dist
 
 @njit(cache=True)
 def _find_neighbour_masks_kernel(positions,
@@ -131,6 +172,9 @@ def _only_neighbours_distance_kernel(positions,
         new_dist[k, k] = 0.0
     return neighbour, second, new_dist
 
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+# CLASS CrystalStructure
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
 class CrystalStructure:
     """
     Classe per rappresentare una struttura cristallina.
@@ -158,10 +202,10 @@ class CrystalStructure:
         self.reference_positions = None  # posizioni di riferimento per la Verlet cage
         
         # 16.6416 è la dimensione ideale della cella per Ag in Å
-        self.pcb = np.full(3, 166.416) # *10 così di default non considera la periodicità
+        self.pcb = np.full(3, 1664.16) # *100 così di default non considera la periodicità
         
     @classmethod
-    def from_file(cls, filename):
+    def from_file(cls, filename) -> CrystalStructure:
         """Crea un Crystal leggendo da file."""
         data = np.loadtxt(filename)
         return cls(data)
@@ -169,45 +213,104 @@ class CrystalStructure:
     # crystal = Crystal.from_file('data.txt')
     
     @classmethod
-    def empty(cls, n_atoms):
+    def empty(cls, n_atoms) -> CrystalStructure:
         """Constructor alternativo: crea Crystal vuoto"""
         zeros = np.zeros(n_atoms)
         return cls(zeros, zeros, zeros)
     
-    # viste sulle posizioni
+    # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+    # PROPERTIES
+    # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+    
     @property
-    def vec_x(self):
+    def vec_x(self) -> np.ndarray:
+        """ Restituisce il vettore delle coordinate x degli atomi. """
         return self.positions[:, 0]
 
     @property
-    def vec_y(self):
+    def vec_y(self) -> np.ndarray:
+        """ Restituisce il vettore delle coordinate y degli atomi. """
         return self.positions[:, 1]
 
     @property
-    def vec_z(self):
+    def vec_z(self) -> np.ndarray:
+        """ Restituisce il vettore delle coordinate z degli atomi. """
         return self.positions[:, 2]
     
+    @property
+    def displacements_matrix(self):
+        """
+        Restituisce il tensore NxNx3 dei vettori spostamento fra tutti gli atomi.
+        Shape: (N_atomi, N_atomi, 3)
+        """
+        N = self.positions.shape[0]
+        
+        # --- Stima Memoria ---
+        bytes_per_float = 8  # float64
+        num_elements = N * N * 3
+        required_memory_bytes = num_elements * bytes_per_float
+        
+        # Ottieni la RAM disponibile attuale
+        available_ram = psutil.virtual_memory().available
+        
+        # Conversione per leggibilità (GB)
+        req_gb = required_memory_bytes / (1024**3)
+        avail_gb = available_ram / (1024**3)
+
+        # Logica di warning (es. se occupiamo più del 20% della RAM libera)
+        if required_memory_bytes > (available_ram * 0.2):
+            warnings.warn(
+                f"\nATTENZIONE: La matrice richiesta occuperà {req_gb:.2f} GB "
+                f"su {avail_gb:.2f} GB disponibili. Potrebbe causare swap o crash.",
+                ResourceWarning
+            )
+
+        # Chiama la funzione numba (definita fuori dalla classe per performance)
+        return _compute_displacement_matrix(self.positions)
+    
+    @property
+    def crystal_center(self) -> np.ndarray:
+        """
+        Restituisce le coordinate (x, y, z) del centro del volume del cristallo.
+        """
+        # origine del cristallo
+        min_pos = np.min(self.positions, axis=0)
+        
+        # passo reticolare 'a' (distanza minima tra primi vicini)
+        if getattr(self, "distance_matrix", None) is None:
+            dist = _compute_distance_matrix(self.positions)
+        else:
+            dist = self.distance_matrix
+            
+        # Maschera gli zeri e trova il minimo globale (scalare)
+        lattice_constant = np.min(np.where(dist < 1e-5, np.inf, dist))
+        
+        # atomi per lato 
+        atoms_per_side = self.N_atoms ** (1/3)
+        
+        return min_pos + (atoms_per_side * lattice_constant / 2.0)
+        
     # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
     # METODI 
     # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
     
-    def copy(self):
+    def copy(self) -> CrystalStructure:
         return copy.deepcopy(self)
     
-    def set_R_C(self, R_C):
+    def set_R_C(self, R_C) -> None:
         """
         Imposta la distanza di taglio R_C usata per trovare i vicini.
         """
         self.R_C = R_C
         
-    def set_R_P(self, R_P):
+    def set_R_P(self, R_P) -> None:
         """
         Imposta il punto di giunzione polinomiale R_P; 
-        divide primi e secondi vicini.
+        divide primi e 'secondi' vicini.
         """
         self.R_P = R_P
     
-    def set_R_V(self, R_V):
+    def set_R_V(self, R_V) -> None:
         """
         Imposta la grandezza della Verlet cage R_V.
         Consigliato: R_V = R_C + 0.5 Å.
@@ -217,24 +320,28 @@ class CrystalStructure:
             raise ValueError(f"R_V ({R_V}) non può essere minore di R_C ({self.R_C}).")
         self.R_V = R_V
         
-    def set_pbc(self, pcb):
+    def set_pbc(self, pcb) -> None:
         """
         Imposta la dimensione della cella per la condizione di periodicità al contorno.
         Deve essere un array-like di 3 elementi.
         Deve essere consistente con R_C.
+        Può ricevere np.inf per indicare nessuna periodicità in una direzione.
         
         pcb: array-like di 3 elementi con le dimensioni della cella in Å.
         """
         # controllo lunghezza
         if len(pcb) != 3:
-            raise ValueError("pcb deve essere un array-like di 3 elementi.")
+            raise ValueError("pcb deve essere un array-like di 3 elementi: (Lx, Ly, Lz).")
         # controllo consistenza con R_C
         if self.R_C >= 0.5 * min(pcb):
             raise ValueError("⚠️ Attenzione: R_C deve essere minore della metà della dimensione della cella.")
+        # per ricevere inf, deve convertirlo in un float molto grande
+        if any(element == np.inf for element in pcb):
+            pcb = [element if element != np.inf else 100*np.max(pcb) for element in pcb]
         
         self.pcb = np.asarray(pcb, dtype=np.float64)
         
-    def add_atom(self, position):
+    def add_atom(self, position) -> None:
         """
         Aggiunge un atomo alla struttura cristallina.
         position: array-like di 3 elementi con le coordinate dell'atomo.
@@ -246,14 +353,18 @@ class CrystalStructure:
         self.N_atoms += 1
         self.neighbours_computed = False  # i vicini devono essere ricalcolati
     
-    def find_neighbours(self):
+    def find_neighbours(self) -> None:
         '''
         Ricalcola OGNI distanza e trova primi e secondi vicini per ogni atomo in base a R_C e R_P.
         Gli atomi entro una distanza di Verlet (R_C < r < R_V) sono aggiunti alla matrice dei secondi vicini,
         ma la loro distanza non è salvata in distance_matrix.
         '''
         positions = np.asarray(self.positions, dtype=np.float64)
-        neighbour, second, dist = _find_neighbour_masks_kernel(positions, self.R_P, self.R_C, self.R_V, self.pcb)
+        neighbour, second, dist = _find_neighbour_masks_kernel(positions, 
+                                                               self.R_P, 
+                                                               self.R_C, 
+                                                               self.R_V, 
+                                                               self.pcb)
         # aggiorno le matrici dei vicini e delle distanze
         self.neighbour_matrix = neighbour
         self.second_neighbour_matrix = second
@@ -262,20 +373,26 @@ class CrystalStructure:
         self.neighbours_computed = True
         self.reference_positions = np.copy(self.positions)
         
-    def only_neighbours_distance(self):
+    def only_neighbours_distance(self) -> None:
         '''
         Ricalcola solamente le distanze dai vicini già noti, senza aggiornarli.
         Se le posizioni sono cambiate troppo, neighbours_computed è posto False ed
         è necessario rieseguire find_neighbours().
         '''
         positions = np.asarray(self.positions, dtype=np.float64)
-        neighbour, second, dist = _only_neighbours_distance_kernel(positions, self.R_P, self.R_C, self.R_V, self.neighbour_matrix, self.distance_matrix, self.pcb)
+        neighbour, second, dist = _only_neighbours_distance_kernel(positions, 
+                                                                   self.R_P, 
+                                                                   self.R_C, 
+                                                                   self.R_V, 
+                                                                   self.neighbour_matrix, 
+                                                                   self.distance_matrix, 
+                                                                   self.pcb)
         # aggiorno le matrici dei vicini e delle distanze
         self.neighbour_matrix = neighbour
         self.second_neighbour_matrix = second
         self.distance_matrix = dist
         
-    def print_neighbours(self, index=None):
+    def print_neighbours(self, index=None) -> None:
         """
         Stampa gli indici dei primi vicini per ogni atomo o di uno nello specifico.
         """
@@ -290,19 +407,22 @@ class CrystalStructure:
         else:
             print("Indici dei vicini per ogni atomo:")
             for i in range(self.N_atoms):
-                print(f"Atomo {i}, n_neigh={np.sum(self.neighbour_matrix[i])}: {np.where(self.neighbour_matrix[i])[0]}")
+                print(f"Atomo {i}, n_neigh={np.sum(self.neighbour_matrix[i])}: \
+                    {np.where(self.neighbour_matrix[i])[0]}")
                 
-    def print_second_neighbours(self, index=None):
+    def print_second_neighbours(self, index=None) -> None:
         if not self.neighbours_computed:
-            print("Prima di chiamare questo metodo, esegui find_neighbours(R_C)")
+            print("Prima di chiamare questo metodo, esegui find_neighbours()")
             return None 
         if np.isfinite(self.R_P) is False:
             print("R_P non definito; assegnarlo con CrystalStructure.set_R_P ed eseguire find_neighbours().")
             return None
         if index is not None:
-            print(f"Secondi vicini dell'atomo {index}: {np.where(self.second_neighbour_matrix[index])[0]}")
+            print(f"Secondi vicini dell'atomo {index}: \
+                {np.where(self.second_neighbour_matrix[index])[0]}")
             return None
         else:
             print("Indici dei secondi vicini per ogni atomo:")
             for i in range(self.N_atoms):
-                print(f"Atomo {i}, n_2nd_neigh={np.sum(self.second_neighbour_matrix[i])}: {np.where(self.second_neighbour_matrix[i])[0]}")
+                print(f"Atomo {i}, n_2nd_neigh={np.sum(self.second_neighbour_matrix[i])}: \
+                    {np.where(self.second_neighbour_matrix[i])[0]}")

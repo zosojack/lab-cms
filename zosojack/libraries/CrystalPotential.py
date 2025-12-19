@@ -6,7 +6,12 @@ from libraries.CrystalStructure import CrystalStructure
 from libraries.PolynomialJunction import PolynomialJunction
 
 @njit(cache=True)
-def _potential_kernel(dist_matrix, neighbour_mask, second_mask, sigma, epsilon, coeffs):
+def _potential_kernel(dist_matrix: np.ndarray, 
+                      neighbour_mask: np.ndarray, 
+                      second_mask: np.ndarray, 
+                      sigma: float, 
+                      epsilon: float, 
+                      coeffs: np.ndarray) -> float:
     pot = 0.0
     N = dist_matrix.shape[0]
     
@@ -39,7 +44,15 @@ def _potential_kernel(dist_matrix, neighbour_mask, second_mask, sigma, epsilon, 
     return pot
     
 @njit(cache=True)
-def _forces_kernel(positions, dist_matrix, neighbour_mask, second_mask, sigma, epsilon, coeffs, pcb):
+def _forces_kernel(positions: np.ndarray, 
+                   dist_matrix: np.ndarray, 
+                   neighbour_mask: np.ndarray, 
+                   second_mask: np.ndarray, 
+                   sigma: float, 
+                   epsilon: float, 
+                   coeffs: np.ndarray, 
+                   pcb: np.ndarray) -> np.ndarray:
+    
     N = positions.shape[0]
     forces = np.zeros((N, 3), dtype=np.float64)
     s6 = sigma**6
@@ -106,14 +119,15 @@ class CrystalPotential:
                  crystal: CrystalStructure, 
                  sigma: float = 2.644, 
                  epsilon: float = 0.345,
-                 poly7: PolynomialJunction = None):
+                 poly7: PolynomialJunction = None) -> None:
+        
         self.crystal = crystal  # oggetto CrystalStructure
         self.sigma   = sigma
         self.epsilon = epsilon
         self.poly7 = poly7  # polinomio di settimo grado per la giunzione polinomiale
     # ---------------------------------------------------------------
         
-    def compute_potential_numba(self):
+    def compute_potential_numba(self) -> float:
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \
@@ -131,11 +145,16 @@ class CrystalPotential:
         elif self.poly7 is not None:
             coeffs = self.poly7.coeffs_array
             
-        pot = _potential_kernel(dist, mask_first, mask_second, self.sigma, self.epsilon, coeffs)
+        pot = _potential_kernel(dist_matrix=dist, 
+                                neighbour_mask=mask_first, 
+                                second_mask=mask_second, 
+                                sigma=self.sigma, 
+                                epsilon=self.epsilon, 
+                                coeffs=coeffs)
         self.crystal.potential = float(pot)
         return self.crystal.potential
 
-    def compute_forces_numba(self):
+    def compute_forces_numba(self) -> np.ndarray:
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \
