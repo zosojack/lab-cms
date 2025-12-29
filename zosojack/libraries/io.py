@@ -1,63 +1,70 @@
-# AtomTracker.py
-'''
-------------------------
+"""
+io.py
+========================
 Classe che traccia gli atomi di un sistema cristallino durante una simulazione di dinamica.
-------------------------
-'''
-
-from pathlib import Path
+========================
+"""
 import numpy as np
+from pathlib import Path
 
-# FIXME: import circolare
-'''from libraries.CrystalDynamics import CrystalDynamics
-
-def _output_name (dynamics: CrystalDynamics, n_steps: int) -> None:
-
-    out_dir = Path(
-        f"output/dynamics/steps{dynamics.n_steps}~dt{dynamics.dt}~T{dynamics.temp_ini}~Ag~{dynamics.crystal.N_atoms}"
-    )
-    out_dir.mkdir(parents=True, exist_ok=True)
-    state_file = out_dir / "energy.txt"
-    # TODO: sistemare tracking adatoms in modo intelligente
-    track_file = out_dir / "adatom_track.txt"
-'''
+from libraries.CrystalStructure import CrystalStructure
 
 class AtomTracker:
     
-    def __init__(self, index: int, output_file: str) -> None:
+    def __init__(self, index: int, output_file: str, pcb_option: str = 'unbounded') -> None:
         """
         Inizializza il tracciatore di atomi con l'indice dell'atomo da tracciare.
         
         Parametri:
         - index: indice dell'atomo da tracciare
         - output_file: percorso del file di output dove salvare le posizioni
+        - pcb_option: opzione per il trattamento delle condizioni al contorno periodiche
+                      'periodic' per condizioni al contorno periodiche, 'unbounded' di default
         """
         self.index = index
         self.output_path = Path(output_file) # converte in Path
+        self.set_pcb_option(pcb_option)
         
         # Crea la cartella se non esiste
         parent_folder = self.output_path.parent
         parent_folder.mkdir(parents=True, exist_ok=True)
         
         with open(self.output_path, 'w') as f:
-            f.write(f"TRAIETTORIA ATOMO {self.index}\n")
+            f.write(f"TRAIETTORIA ATOMO {self.index} - {self.pcb_option.upper()}\n")
             f.write(f"step \t x \t y \t z\n")
+            
+    def set_pcb_option(self, option: str) -> None:
+        """
+        Imposta l'opzione per il trattamento delle condizioni al contorno periodiche.
+        
+        Parametri:
+        - option: 'periodic' per condizioni al contorno periodiche, 'unbounded' altrimenti
+        """
+        if option not in ['periodic', 'unbounded']:
+            raise ValueError("L'opzione deve essere 'periodic' o 'unbounded'.")
+        self.pcb_option = option
 
-    def record_position(self, step: int, positions: np.ndarray) -> None:
+    def record_position(self, step: int, crystal: CrystalStructure) -> None:
         """
         Registra le posizioni degli atomi tracciati nel file di output.
         
         Parametri:
         - step: passo temporale corrente della simulazione
-        - positions: array delle posizioni attuali di tutti gli atomi
+        - crystal: istanza della struttura cristallina contenente le posizioni degli atomi
+                    e le dimensioni della cella per le condizioni al contorno periodiche
         """
+        pos = crystal.positions[self.index].copy()
+        
+        if self.pcb_option == 'periodic':
+            # Applica le condizioni al contorno periodiche
+            pos -= crystal.pcb * np.floor(crystal.positions[self.index] / crystal.pcb)
+            
         with open(self.output_path, 'a') as f:
-            pos = positions[self.index]
             f.write(f"{step} \t {pos[0]} \t {pos[1]} \t {pos[2]}\n")
 
 class XYZwriter():
     
-    def __init__(self, output_folder: str, dt: float, dump_interval: int) -> None:
+    def __init__(self, output_folder: str, dt: float, dump_interval: int = 200) -> None:
         """
         Inizializza l'oggetto che registra le traiettorie degli atomi.
         

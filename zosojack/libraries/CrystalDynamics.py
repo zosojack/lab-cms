@@ -1,12 +1,12 @@
-"""CrystalDynamics.py
+"""
+CrystalDynamics.py
 ========================
-
-Versione di `CrystalDynamics` che sfrutta le versioni vettoriali
-(`find_neighbours_numpy`, `compute_potential_numpy`, `compute_forces_numpy`).
-Il comportamento esterno rimane identico all'implementazione
-originale basata su liste.
+Classe per eseguire la dinamica molecolare classica su un sistema cristallino.
+========================
 """
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 from pathlib import Path
@@ -17,7 +17,6 @@ from libraries.CrystalStructure import CrystalStructure
 from libraries.CrystalPotential import CrystalPotential
 from libraries.PolynomialJunction import PolynomialJunction
 from libraries.io import AtomTracker, XYZwriter
-
 
 # Costanti fisiche 
 k_B = 1 / 11603  # eV/K
@@ -32,7 +31,7 @@ class CrystalDynamics:
 		atomic_mass: float = 108,
 		dt: float = 1e-15,
 		temp_ini: float = 20,
-		atom_tracker: Optional[AtomTracker] = None,
+		atom_tracker: Optional[AtomTracker | list[AtomTracker]] = None,
 		xyz_writer: Optional[XYZwriter] = None,
 	):
 		# Oggetti
@@ -52,8 +51,8 @@ class CrystalDynamics:
 		self.potential_E = None
   
 		# Strumenti di output
-		self.atom_tracker = atom_tracker
-		self.xyz_writer = xyz_writer
+		self._atom_tracker = atom_tracker
+		self._xyz_writer = xyz_writer
 
 	# ---------------------------------------------------------------
 	# Properties - non necessarie ma faccio pratica
@@ -65,17 +64,18 @@ class CrystalDynamics:
 
 	@xyz_writer.setter
 	def xyz_writer(self, writer: XYZwriter) -> None:
-		if writer is not None and writer.dump_interval < 10:
-			print("⚠️ Attenzione: dump_interval troppo piccolo può rallentare la simulazione e saturare il disco.")
-		self._xyz_writer = writer
-	
+		if writer.dump_interval < 10:
+			warnings.warn("⚠️ Attenzione: un dump_interval troppo piccolo può rallentare la simulazione e saturare il disco.", UserWarning)
+   
+		self._xyz_writer = writer 
+   	
 	@property
 	def atom_tracker(self):
 		return self._atom_tracker
 
 	@atom_tracker.setter
-	def atom_tracker(self, tracker: AtomTracker) -> None:
-		self._atom_tracker = tracker
+	def atom_tracker(self, tracker: AtomTracker | list[AtomTracker]) -> None:
+		self._atom_tracker = tracker if isinstance(tracker, list) else [tracker]
         
 	# ---------------------------------------------------------------
 	# Utility private
@@ -125,19 +125,24 @@ class CrystalDynamics:
 		else:	
 			return self.crystal.find_neighbours()
     
-
 	def _update_forces(self, poly7=None) -> None:
 		"""Calcola le forze usando la versione numpy del potenziale."""
 
-		self.new_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces_numba()
+		self.new_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces()
 
-	def _update_velocities(self) -> None:
+	def _update_velocities(self, rescale_velocity: bool = False) -> None:
 		"""Aggiorna le velocità (formula invariata)."""
 
 		acc_old = self.old_force / self.atomic_mass
 		acc_new = self.new_force / self.atomic_mass
 
 		self.velocities = self.velocities + 0.5 * (acc_old + acc_new) * self.dt
+		if rescale_velocity:
+			# Re-scale velocità per mantenere la temperatura costante
+			E_K = 0.5 * self.atomic_mass * float(np.sum(self.velocities**2))
+			T_now = (2 / 3) * (E_K / (self.crystal.N_atoms * k_B))
+			self.velocities *= np.sqrt(self.temp_ini / T_now)
+   
 		self.kinetic_E = 0.5 * self.atomic_mass * float(np.sum(self.velocities**2))
   
 		self.old_force = self.new_force
@@ -151,14 +156,14 @@ class CrystalDynamics:
 			return self.temp_ini
 
 	# NOTE: deprecated, usare CrystalDynamicsResult
-	def _output_state(self, filename, step, E_tot, E_pot, E_kin, temp):
+	def _output_state(self, filename, step, E_tot, E_pot, E_kin, temp) -> None:
 		"""Scrive lo stato della simulazione (come in CrystalDynamics)."""
 
 		with open(filename, "w") as f:
 			f.write(f"{step * self.dt} \t {E_tot} \t {E_pot} \t {E_kin} \t {temp}\n")
 
 	# NOTE: deprecated, usare XYZwriter
-	def _output_positions(self, foldername, step, n_steps):
+	def _output_positions(self, foldername, step, n_steps) -> None:
 		"""Salva le posizioni istantanee (stesso formato dell'originale)."""
 
 		width = len(str(n_steps))
@@ -173,25 +178,13 @@ class CrystalDynamics:
 	# ---------------------------------------------------------------
 	def run_dynamics(self, 
                   	n_steps: float,
-                    t_th:float = 0, 
-                    output: bool = False,
-                    n_print: int = 100,
-                    # TODO: Aggiungere un sistema intelligente per il tracking di adatoms
-                    # QUESTO NON È UN MODO INTELLIGENTE
-                    track_last: bool = False, 
-                    debug: bool = False) -> CrystalDynamicsResult:
+                    t_th:float = 0,
+                    rescale_velocity: bool = False,
+                    debug: bool = False,
+                    track_last=False, n_print=None, output=False #NOTE: deprecated arguments
+                ) -> CrystalDynamicsResult:
      
-		"""Esegue la dinamica molecolare per `n_steps` step."""
-	
-		if output:
-			out_dir = Path(
-				f"output/dynamics/steps{n_steps}~dt{self.dt}~T{self.temp_ini}~Ag~{self.crystal.N_atoms}"
-			)
-			out_dir.mkdir(parents=True, exist_ok=True)
-			state_file = out_dir / "energy.txt"
-			# TODO: sistemare tracking adatoms in modo intelligente
-			track_file = out_dir / "adatom_track.txt"
-
+		"""Esegue la dinamica molecolare per `n_steps` step."""			
 
 		if getattr(self.crystal, "neighbour_matrix", None) is None:
 			print(
@@ -214,7 +207,7 @@ class CrystalDynamics:
 			self._random_velocities()
 
 		if self.old_force is None:
-			self.old_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces_numba()
+			self.old_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces()
 	
 
 		# LOOP TERMALIZZAZIONE ------------------------------
@@ -223,7 +216,7 @@ class CrystalDynamics:
 			self._update_positions()
 			self._update_neighbours_distances()
 			self._update_forces(poly7=poly7)
-			self._update_velocities()
+			self._update_velocities(rescale_velocity=rescale_velocity)
 		# FINE LOOP TERMALIZZAZIONE -------------------------
 	
 		# Vettori per salvare i dati
@@ -246,7 +239,7 @@ class CrystalDynamics:
 			potential_energy_now = CrystalPotential(
 				self.crystal,
 				poly7=poly7,
-			).compute_potential_numba()
+			).compute_potential()
 			temp = self._temperature()
 
 			E_tot_now = potential_energy_now + self.kinetic_E
@@ -261,31 +254,11 @@ class CrystalDynamics:
 					f"V={potential_energy_now:.3f} eV, "
 					f"K={self.kinetic_E:.3f} eV, T={temp:.1f} K"
 				)
-    
-			# NOTE: deprecated, usare CrystalDynamicsResult e XYZwriter
-			if output and step % n_print == 0:
-				self._output_state(
-					state_file,
-					step,
-					E_tot_now,
-					potential_energy_now,
-					#meta_E_K,
-					meta_T,
-				)
-				self._output_positions(out_dir, step, n_steps)
-			if track_last:
-				# se non esiste il file, lo creo con l'header
-				if not track_file.exists():
-							with open(track_file, "w") as f:
-								f.write("step\tx\ty\tz\n")
-				# se esiste, aggiungi posizione ultimo atomo
-				x, y, z = self.crystal.positions[-1]
-				with open(track_file, "a") as f:
-					f.write(f"{step} \t {x} \t {y} \t {z}\n")
      
 			# Tracking adatom specifico
 			if self.atom_tracker is not None:
-				self.atom_tracker.record_position(step, self.crystal.positions)
+				for a_t in self.atom_tracker:
+					a_t.record_position(step, self.crystal)
 			# Tracking posizioni
 			if self.xyz_writer is not None:
 				self.xyz_writer.write_frame(step, self.crystal.positions)
@@ -299,7 +272,7 @@ class CrystalDynamics:
 			energies = meta_energies_dict,
 			temperatures = meta_T,
 			trajectory_folder_path = self.xyz_writer.output_folder if self.xyz_writer is not None else None,  # Opzionale
-			adatom_file_path = self.atom_tracker.output_path if self.atom_tracker is not None else None, # Opzionale
+			adatom_file_path = [a_t.output_path for a_t in self.atom_tracker] if self.atom_tracker is not None else None, # Opzionale
 		)
    
 		return result
@@ -348,9 +321,9 @@ class CrystalDynamicsResult:
 			self.std_E_tot = np.nan
    
 
-	# Metodo extra per stampare info utili
-	def summary(self):
-		return (f"Simulation Result:\n"
-				f"  - Duration: {self.time_step*self.num_steps:.2f} ps\n"
-				f"  - Mean Temp: {self.mean_temp:.2f} K\n"
-				f"  - Mean Energy: {self.mean_E_tot:.2f} eV\n")
+	# Metodo per stampare info utili
+	def summary(self) -> None:
+		print (f"Simulation Result:\n"
+				f" - Duration: {self.time_step*self.num_steps:.2f} ps\n"
+				f" - Mean Temp: {self.mean_temp:.2f} ± {self.std_temp:.2f} K\n"
+				f" - Mean Energy: {self.mean_E_tot:.2f} ± {self.std_E_tot:.2f} eV\n")

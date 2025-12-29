@@ -1,4 +1,9 @@
-# CrystalPotential.py
+"""
+CrystalPotential.py
+========================
+Classe per calcolare potenziale e forze in un sistema cristallino.
+========================
+"""
 import numpy as np
 from numba import njit
 
@@ -127,7 +132,7 @@ class CrystalPotential:
         self.poly7 = poly7  # polinomio di settimo grado per la giunzione polinomiale
     # ---------------------------------------------------------------
         
-    def compute_potential_numba(self) -> float:
+    def compute_potential(self) -> float:
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \
@@ -154,7 +159,7 @@ class CrystalPotential:
         self.crystal.potential = float(pot)
         return self.crystal.potential
 
-    def compute_forces_numba(self) -> np.ndarray:
+    def compute_forces(self) -> np.ndarray:
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \

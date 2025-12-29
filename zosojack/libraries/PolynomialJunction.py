@@ -1,6 +1,11 @@
-# PolynomialJunction.py
-# Polynomial junction of order 7 between Lennard-Jones potential and zero
+"""
+PolynomialJunction.py
+========================
+Classe che implementa la giunzione polinomiale di ordine 7 tra il potenziale di Lennard-Jones e zero.
+========================
+"""
 import numpy as np
+
 class PolynomialJunction:
   """
   Calcola i coefficienti del polinomio di giunzione di ordine 7

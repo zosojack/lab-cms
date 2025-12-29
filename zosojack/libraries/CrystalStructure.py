@@ -1,4 +1,9 @@
-# CrystalStructure.py 
+"""
+CrystalStructure.py
+========================
+Classe per definire le caratteristiche di un sistema cristallino.
+========================
+"""
 from __future__ import annotations
 import psutil
 import warnings
@@ -12,7 +17,7 @@ import copy
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
 
 @njit(cache=True)
-def _compute_displacement_matrix(positions):
+def _compute_displacement_matrix(positions) -> np.ndarray:
     N = positions.shape[0]
     # N x N x 3: matrice dei vettori spostamento
     disp = np.zeros((N, N, 3), dtype=np.float64)
@@ -39,7 +44,7 @@ def _compute_displacement_matrix(positions):
             
     return disp
 
-def _compute_distance_matrix(positions):
+def _compute_distance_matrix(positions) -> np.ndarray:
     disp = _compute_displacement_matrix(positions)
     dist = np.linalg.norm(disp, axis=2)
     return dist
@@ -49,7 +54,7 @@ def _find_neighbour_masks_kernel(positions,
                                  R_P,
                                  R_C,
                                  R_V,
-                                 pcb):
+                                 pcb) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     '''
     HACK: poiché rij viene salvato solo per i vicini, i confronti vengono effettuati
     senza calcolarne la radice quadrata, per efficienza. Per farlo, anche R_P, R_C e R_V
@@ -99,6 +104,7 @@ def _find_neighbour_masks_kernel(positions,
                     
     for k in range(N):
         dist[k, k] = 0.0
+        
     return neighbour, second, dist
 
 @njit(cache=True)
@@ -108,7 +114,7 @@ def _only_neighbours_distance_kernel(positions,
                                      R_V,
                                      neighbour, 
                                      second, 
-                                     pcb):
+                                     pcb) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     
     '''
     Docstring:
@@ -170,6 +176,7 @@ def _only_neighbours_distance_kernel(positions,
                     
     for k in range(N):
         new_dist[k, k] = 0.0
+        
     return neighbour, second, new_dist
 
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
@@ -238,7 +245,7 @@ class CrystalStructure:
         return self.positions[:, 2]
     
     @property
-    def displacements_matrix(self):
+    def displacements_matrix(self) -> np.ndarray:
         """
         Restituisce il tensore NxNx3 dei vettori spostamento fra tutti gli atomi.
         Shape: (N_atomi, N_atomi, 3)
@@ -273,8 +280,6 @@ class CrystalStructure:
         """
         Restituisce le coordinate (x, y, z) del centro del volume del cristallo.
         """
-        # origine del cristallo
-        min_pos = np.min(self.positions, axis=0)
         
         # passo reticolare 'a' (distanza minima tra primi vicini)
         if getattr(self, "distance_matrix", None) is None:
@@ -283,12 +288,25 @@ class CrystalStructure:
             dist = self.distance_matrix
             
         # Maschera gli zeri e trova il minimo globale (scalare)
-        lattice_constant = np.min(np.where(dist < 1e-5, np.inf, dist))
+        passo_reticolare = np.min(np.where(dist < 1e-5, np.inf, dist))
         
+        '''
         # atomi per lato 
         atoms_per_side = self.N_atoms ** (1/3)
+        # il centro è a metà del lato del cristallo se atoms_per_side è dispari
+        if atoms_per_side % 2 == 1:
+            return min_pos + (atoms_per_side/2.0 * lattice_constant)
+        # altrimenti va aggiunto mezzo passo reticolare
+        else:
+            return min_pos + (atoms_per_side/2.0 * lattice_constant) + (lattice_constant / 2.0)
+        '''
         
-        return min_pos + (atoms_per_side * lattice_constant / 2.0)
+        min_pos = np.min(self.positions, axis=0)
+        max_pos = np.max(self.positions, axis=0)
+        
+        center = (min_pos + max_pos) / 2.0 + (passo_reticolare / 2)
+        
+        return center
         
     # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
     # METODI 
@@ -340,7 +358,8 @@ class CrystalStructure:
             pcb = [element if element != np.inf else 100*np.max(pcb) for element in pcb]
         
         self.pcb = np.asarray(pcb, dtype=np.float64)
-        
+    
+    # TODO: metodo per aggiungere più atomi contemporaneamente?
     def add_atom(self, position) -> None:
         """
         Aggiunge un atomo alla struttura cristallina.

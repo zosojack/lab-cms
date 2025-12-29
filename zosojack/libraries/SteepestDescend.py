@@ -1,11 +1,15 @@
-# SteepestDescend.py
+"""
+SteepestDescent.py
+========================
+Classe che implementa la minimizzazione dell'energia tramite il metodo del gradiente discendente.
+========================
+"""
 import numpy as np
 from pathlib import Path
 
 from libraries.CrystalStructure import CrystalStructure
 from libraries.CrystalPotential import CrystalPotential
 from libraries.PolynomialJunction import PolynomialJunction
-
 
 class SteepestDescend:
     
@@ -37,11 +41,11 @@ class SteepestDescend:
                     sigma=2.644,  # Å
                 )
                 potenziale = CrystalPotential(self.crystal, poly7=poly7)
-                forces = potenziale.compute_forces_numba()
+                forces = potenziale.compute_forces()
             else:
                 potenziale = CrystalPotential(self.crystal)
-                forces = potenziale.compute_forces_numba()
-            potential_energy = potenziale.compute_potential_numba()
+                forces = potenziale.compute_forces()
+            potential_energy = potenziale.compute_potential()
                     
             max_force = np.max(np.linalg.norm(forces, axis=1))
             
