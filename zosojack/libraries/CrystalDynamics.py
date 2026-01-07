@@ -1,9 +1,4 @@
-"""
-CrystalDynamics.py
-========================
-Classe per eseguire la dinamica molecolare classica su un sistema cristallino.
-========================
-"""
+# CrystalDynamics.py
 from __future__ import annotations
 
 import warnings
@@ -23,7 +18,11 @@ k_B = 1 / 11603  # eV/K
 N_A = 1.66053906660E-27  # numero di Avogadro
 
 class CrystalDynamics:
-	"""Versione numba della dinamica molecolare classica."""
+	"""
+	CrystalDynamics
+	===============
+	Classe per eseguire la dinamica molecolare classica su un sistema cristallino.
+	"""
 
 	def __init__(
 		self,
@@ -131,7 +130,10 @@ class CrystalDynamics:
 		self.new_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces()
 
 	def _update_velocities(self, rescale_velocity: bool = False) -> None:
-		"""Aggiorna le velocità (formula invariata)."""
+		"""
+  		Aggiorna le velocità.
+  		Se rescale_velocity è True, ricalcola la velocità per mantenere la temperatura costante.
+  		"""
 
 		acc_old = self.old_force / self.atomic_mass
 		acc_new = self.new_force / self.atomic_mass
@@ -148,7 +150,7 @@ class CrystalDynamics:
 		self.old_force = self.new_force
 
 	def _temperature(self) -> float:
-		"""Restituisce la temperatura corrente del sistema."""
+		"""Restituisce la temperatura attuale del sistema."""
 
 		if self.kinetic_E is not None:
 			return (2 / 3) * (self.kinetic_E / (self.crystal.N_atoms * k_B))

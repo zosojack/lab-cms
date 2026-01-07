@@ -1,9 +1,4 @@
-"""
-CrystalStructure.py
-========================
-Classe per definire le caratteristiche di un sistema cristallino.
-========================
-"""
+# CrystalStructure.py
 from __future__ import annotations
 import psutil
 import warnings
@@ -184,8 +179,12 @@ def _only_neighbours_distance_kernel(positions,
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
 class CrystalStructure:
     """
+    CrystalStructure
+    ================
     Classe per rappresentare una struttura cristallina.
-    Attributi:
+    
+    Attributi
+    ---------
     - vec_x, vec_y, vec_z: coordinate degli atomi
     - N_atoms: numero totale di atomi
     Metodi:

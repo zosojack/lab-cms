@@ -1,21 +1,22 @@
-"""
-io.py
-========================
-Classe che traccia gli atomi di un sistema cristallino durante una simulazione di dinamica.
-========================
-"""
+# io.py
 import numpy as np
 from pathlib import Path
 
 from libraries.CrystalStructure import CrystalStructure
 
 class AtomTracker:
+    """
+    AtomTracker
+    ===========
+    Classe che traccia le posizioni di uno specifico atomo durante la simulazione.
+    """
     
     def __init__(self, index: int, output_file: str, pcb_option: str = 'unbounded') -> None:
         """
         Inizializza il tracciatore di atomi con l'indice dell'atomo da tracciare.
         
         Parametri:
+        ----------
         - index: indice dell'atomo da tracciare
         - output_file: percorso del file di output dove salvare le posizioni
         - pcb_option: opzione per il trattamento delle condizioni al contorno periodiche
@@ -38,6 +39,7 @@ class AtomTracker:
         Imposta l'opzione per il trattamento delle condizioni al contorno periodiche.
         
         Parametri:
+        ----------
         - option: 'periodic' per condizioni al contorno periodiche, 'unbounded' altrimenti
         """
         if option not in ['periodic', 'unbounded']:
@@ -63,6 +65,11 @@ class AtomTracker:
             f.write(f"{step} \t {pos[0]} \t {pos[1]} \t {pos[2]}\n")
 
 class XYZwriter():
+    """
+    XYZwriter
+    ==========
+    Classe che registra le traiettorie atomiche in formato .xyz.
+    """
     
     def __init__(self, output_folder: str, dt: float, dump_interval: int = 200) -> None:
         """

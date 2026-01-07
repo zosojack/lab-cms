@@ -1,14 +1,17 @@
 """
 CrystalPotential.py
-========================
+===================
 Classe per calcolare potenziale e forze in un sistema cristallino.
-========================
 """
 import numpy as np
 from numba import njit
 
 from libraries.CrystalStructure import CrystalStructure
 from libraries.PolynomialJunction import PolynomialJunction
+
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+# KERNELS DEI METODI DELLA CLASSE CrystalPotential
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
 
 @njit(cache=True)
 def _potential_kernel(dist_matrix: np.ndarray, 
@@ -111,7 +114,11 @@ def _forces_kernel(positions: np.ndarray,
             forces[i, 2] += Fscalar * dz
 
     return forces
-    
+
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+# CLASS CrystalPotential
+# + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+
 class CrystalPotential:
     """
     Classe per calcolare il potenziale e le forze in una struttura cristallina.
@@ -133,6 +140,9 @@ class CrystalPotential:
     # ---------------------------------------------------------------
         
     def compute_potential(self) -> float:
+        """
+        Calcola il potenziale totale del cristallo.
+        """
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \
@@ -160,6 +170,9 @@ class CrystalPotential:
         return self.crystal.potential
 
     def compute_forces(self) -> np.ndarray:
+        """
+        Calcola le forze sugli atomi del cristallo.
+        """
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
         getattr(self.crystal, "neighbour_matrix", None) is None or \

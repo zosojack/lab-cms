@@ -1,9 +1,4 @@
-"""
-SteepestDescent.py
-========================
-Classe che implementa la minimizzazione dell'energia tramite il metodo del gradiente discendente.
-========================
-"""
+# SteepestDescent.py
 import numpy as np
 from pathlib import Path
 
@@ -12,6 +7,11 @@ from libraries.CrystalPotential import CrystalPotential
 from libraries.PolynomialJunction import PolynomialJunction
 
 class SteepestDescend:
+    """
+    SteepestDescent
+    ===============
+    Classe che implementa la minimizzazione dell'energia tramite il metodo del gradiente discendente.
+    """
     
     def __init__ (self, crystal: CrystalStructure):
         self.crystal = crystal

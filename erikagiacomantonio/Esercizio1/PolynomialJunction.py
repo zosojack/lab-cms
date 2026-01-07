@@ -3,6 +3,9 @@
 import numpy as np
 class PolynomialJunction:
   """
+  PolynomialJunction
+  ==================
+  
   Calcola i coefficienti del polinomio di giunzione di ordine 7
   tra il potenziale di Lennard-Jones e lo zero, in funzione di
   R_P (punto di giunzione) e R_C (distanza di taglio).
