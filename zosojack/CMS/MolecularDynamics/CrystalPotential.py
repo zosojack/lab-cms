@@ -6,8 +6,8 @@ Classe per calcolare potenziale e forze in un sistema cristallino.
 import numpy as np
 from numba import njit
 
-from libraries.CrystalStructure import CrystalStructure
-from libraries.PolynomialJunction import PolynomialJunction
+from CMS.MolecularDynamics.CrystalStructure import CrystalStructure
+from CMS.MolecularDynamics.PolynomialJunction import PolynomialJunction
 
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
 # KERNELS DEI METODI DELLA CLASSE CrystalPotential
@@ -121,11 +121,27 @@ def _forces_kernel(positions: np.ndarray,
 
 class CrystalPotential:
     """
-    Classe per calcolare il potenziale e le forze in una struttura cristallina.
-    Attributi:
-    - crystal: oggetto CrystalStructure
-    - sigma, epsilon: parametri del potenziale di Lennard-Jones,
-                      di default sono quelli per l'argento
+    Classe per calcolare il potenziale e le forze in una struttura cristallina. Implementa
+    il potenziale di Lennard-Jones per i primi vicini e un potenziale polinomiale di settimo
+    grado per i secondi vicini. 
+
+    Attributes
+    ----------
+    crystal : CrystalStructure
+        Struttura cristallina di input.
+    sigma : float
+        Parametro sigma del potenziale di Lennard-Jones (default: 2.644 Å).
+    epsilon : float
+        Profondità del pozzo del potenziale di Lennard-Jones (default: 0.345 eV).
+    poly7 : PolynomialJunction | None
+        Polinomio di giunzione di ordine 7 per le seconde vicine (opzionale).
+        
+    Methods
+    -------
+    compute_potential() -> float
+        Calcola il potenziale totale del cristallo.
+    compute_forces() -> np.ndarray
+        Calcola le forze sugli atomi del cristallo.
     """
     def __init__(self, 
                  crystal: CrystalStructure, 

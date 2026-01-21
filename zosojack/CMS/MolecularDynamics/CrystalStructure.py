@@ -112,7 +112,7 @@ def _only_neighbours_distance_kernel(positions,
                                      pcb) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     
     '''
-    Docstring:
+
     '''
     # Per efficienza, confronto i quadrati delle distanze
     R_P_squared = R_P*R_P
@@ -183,15 +183,64 @@ class CrystalStructure:
     ================
     Classe per rappresentare una struttura cristallina.
     
-    Attributi
-    ---------
-    - vec_x, vec_y, vec_z: coordinate degli atomi
-    - N_atoms: numero totale di atomi
-    Metodi:
-    - __init__: inizializza gli attributi della classe
-    - empty: crea un cristallo vuoto con un numero specificato di atomi
-    - from_file: legge un file .txt e restituisce le coordinate degli atomi
-    - find_neighbours: trova i primi vicini di ogni atomo in base a una distanza di taglio R_C
+    Attributes
+    ----------
+    positions : np.ndarray
+        Matrice Nx3 delle posizioni atomiche.
+    N_atoms : int
+        Numero totale di atomi.
+    R_C : float
+        Distanza di taglio per i primi vicini.
+    R_P : float
+        Punto di giunzione polinomiale che separa primi e secondi vicini.
+    R_V : float
+        Raggio della Verlet cage entro cui tenere traccia degli atomi.
+    neighbours_computed : bool
+        Flag che indica se matrici di vicini e distanze sono aggiornate.
+    reference_positions : np.ndarray | None
+        Copia delle posizioni quando i vicini sono stati calcolati.
+    pcb : np.ndarray
+        Dimensioni della cella per le condizioni periodiche.
+        
+    Properties
+    ----------
+    vec_x : np.ndarray
+        Vettore delle coordinate x degli atomi.
+    vec_y : np.ndarray
+        Vettore delle coordinate y degli atomi.
+    vec_z : np.ndarray
+        Vettore delle coordinate z degli atomi.
+    displacements_matrix : np.ndarray
+        Tensore NxNx3 dei vettori spostamento fra tutti gli atomi.
+    crystal_center : np.ndarray
+        Coordinate (x, y, z) del centro del volume del cristallo.
+    
+    Methods
+    -------
+    from_file(filename) -> CrystalStructure
+        Crea un oggetto CrystalStructure leggendo da file.
+    empty(n_atoms) -> CrystalStructure
+        Costruttore alternativo: crea un oggetto CrystalStructure vuoto.
+    copy() -> CrystalStructure
+        Restituisce una copia di un oggetto CrystalStructure.
+    set_R_C(R_C) -> None
+        Imposta la distanza di taglio R_C.
+    set_R_P(R_P) -> None
+        Imposta il punto di giunzione polinomiale R_P.
+    set_R_V(R_V) -> None
+        Imposta la grandezza della Verlet cage R_V.
+    set_pbc(pcb) -> None
+        Imposta la dimensione della cella per la periodicità al contorno.
+    add_atom(position) -> None
+        Aggiunge un atomo alla struttura cristallina.
+    find_neighbours() -> None
+        Ricalcola tutte le distanze e trova primi e secondi vicini.
+    only_neighbours_distance() -> None
+        Ricalcola solo le distanze dai vicini già noti.
+    print_neighbours(index=None) -> None
+        Stampa gli indici dei primi vicini per ogni atomo o di uno specifico.
+    print_second_neighbours(index=None) -> None
+        Stampa gli indici dei secondi vicini per ogni atomo o di uno specifico.
     """
     # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
     # COSTRUTTORI
@@ -212,7 +261,7 @@ class CrystalStructure:
         
     @classmethod
     def from_file(cls, filename) -> CrystalStructure:
-        """Crea un Crystal leggendo da file."""
+        """ Crea un Crystal leggendo da file. """
         data = np.loadtxt(filename)
         return cls(data)
     # Uso:
@@ -220,7 +269,7 @@ class CrystalStructure:
     
     @classmethod
     def empty(cls, n_atoms) -> CrystalStructure:
-        """Constructor alternativo: crea Crystal vuoto"""
+        """ Costruttore alternativo: crea Crystal vuoto """
         zeros = np.zeros(n_atoms)
         return cls(zeros, zeros, zeros)
     
@@ -289,17 +338,6 @@ class CrystalStructure:
         # Maschera gli zeri e trova il minimo globale (scalare)
         passo_reticolare = np.min(np.where(dist < 1e-5, np.inf, dist))
         
-        '''
-        # atomi per lato 
-        atoms_per_side = self.N_atoms ** (1/3)
-        # il centro è a metà del lato del cristallo se atoms_per_side è dispari
-        if atoms_per_side % 2 == 1:
-            return min_pos + (atoms_per_side/2.0 * lattice_constant)
-        # altrimenti va aggiunto mezzo passo reticolare
-        else:
-            return min_pos + (atoms_per_side/2.0 * lattice_constant) + (lattice_constant / 2.0)
-        '''
-        
         min_pos = np.min(self.positions, axis=0)
         max_pos = np.max(self.positions, axis=0)
         
@@ -317,6 +355,11 @@ class CrystalStructure:
     def set_R_C(self, R_C) -> None:
         """
         Imposta la distanza di taglio R_C usata per trovare i vicini.
+
+        Parameters
+        ----------
+        R_C : float
+            Distanza di taglio per i primi vicini.
         """
         self.R_C = R_C
         
@@ -324,6 +367,11 @@ class CrystalStructure:
         """
         Imposta il punto di giunzione polinomiale R_P; 
         divide primi e 'secondi' vicini.
+
+        Parameters
+        ----------
+        R_P : float
+            Raggio che separa primi e secondi vicini.
         """
         self.R_P = R_P
     
@@ -332,6 +380,11 @@ class CrystalStructure:
         Imposta la grandezza della Verlet cage R_V.
         Consigliato: R_V = R_C + 0.5 Å.
         Non può essere minore di R_C, altrimenti solleva un ValueError.
+
+        Parameters
+        ----------
+        R_V : float
+            Raggio della Verlet cage (deve essere >= R_C).
         """
         if R_V < self.R_C:
             raise ValueError(f"R_V ({R_V}) non può essere minore di R_C ({self.R_C}).")
@@ -343,8 +396,11 @@ class CrystalStructure:
         Deve essere un array-like di 3 elementi.
         Deve essere consistente con R_C.
         Può ricevere np.inf per indicare nessuna periodicità in una direzione.
-        
-        pcb: array-like di 3 elementi con le dimensioni della cella in Å.
+
+        Parameters
+        ----------
+        pcb : array-like
+            Dimensioni della cella (Lx, Ly, Lz) in Å; usare np.inf per direzione non periodica.
         """
         # controllo lunghezza
         if len(pcb) != 3:
@@ -362,7 +418,11 @@ class CrystalStructure:
     def add_atom(self, position) -> None:
         """
         Aggiunge un atomo alla struttura cristallina.
-        position: array-like di 3 elementi con le coordinate dell'atomo.
+
+        Parameters
+        ----------
+        position : array-like
+            Coordinate (x, y, z) dell'atomo da aggiungere.
         """
         position = np.asarray(position, dtype=np.float64)
         if position.shape != (3,):
@@ -376,6 +436,10 @@ class CrystalStructure:
         Ricalcola OGNI distanza e trova primi e secondi vicini per ogni atomo in base a R_C e R_P.
         Gli atomi entro una distanza di Verlet (R_C < r < R_V) sono aggiunti alla matrice dei secondi vicini,
         ma la loro distanza non è salvata in distance_matrix.
+
+        Returns
+        -------
+        None
         '''
         positions = np.asarray(self.positions, dtype=np.float64)
         neighbour, second, dist = _find_neighbour_masks_kernel(positions, 
@@ -396,6 +460,10 @@ class CrystalStructure:
         Ricalcola solamente le distanze dai vicini già noti, senza aggiornarli.
         Se le posizioni sono cambiate troppo, neighbours_computed è posto False ed
         è necessario rieseguire find_neighbours().
+
+        Returns
+        -------
+        None
         '''
         positions = np.asarray(self.positions, dtype=np.float64)
         neighbour, second, dist = _only_neighbours_distance_kernel(positions, 
@@ -429,6 +497,9 @@ class CrystalStructure:
                     {np.where(self.neighbour_matrix[i])[0]}")
                 
     def print_second_neighbours(self, index=None) -> None:
+        """
+        Stampa gli indici dei secondi vicini per ogni atomo o di uno nello specifico.
+        """
         if not self.neighbours_computed:
             print("Prima di chiamare questo metodo, esegui find_neighbours()")
             return None 

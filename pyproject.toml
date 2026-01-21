@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lab-cms"
+version = "0.1.0"
+description = "Computational Materials Science Lab - Crystal structure simulation and analysis"
+authors = [
+    {name = "zosojack"}
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "numba",
+
+]
+
+[tool.setuptools.package-dir]
+"" = "zosojack"
+
+[tool.setuptools.packages.find]
+where = ["zosojack"]
+include = ["CMS*"]
+
+[project.optional-dependencies]
+dev = [
+    "jupyter",
+    "ipython",
+]

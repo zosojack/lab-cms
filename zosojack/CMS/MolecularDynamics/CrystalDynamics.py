@@ -4,14 +4,13 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
-from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
-from libraries.CrystalStructure import CrystalStructure
-from libraries.CrystalPotential import CrystalPotential
-from libraries.PolynomialJunction import PolynomialJunction
-from libraries.io import AtomTracker, XYZwriter
+from CMS.MolecularDynamics.CrystalStructure import CrystalStructure
+from CMS.MolecularDynamics.CrystalPotential import CrystalPotential
+from CMS.MolecularDynamics.PolynomialJunction import PolynomialJunction
+from CMS.MolecularDynamics.io import AtomTracker, XYZwriter
 
 # Costanti fisiche 
 k_B = 1 / 11603  # eV/K
@@ -22,6 +21,27 @@ class CrystalDynamics:
 	CrystalDynamics
 	===============
 	Classe per eseguire la dinamica molecolare classica su un sistema cristallino.
+ 
+	Attributes
+	----------
+	crystal : CrystalStructure
+		Oggetto CrystalStructure che rappresenta la struttura cristallina.
+	atomic_mass : float
+		Massa atomica in unità di massa atomica (default: 108 u).
+	dt : float
+		Passo temporale della simulazione in secondi (default: 1e-15 s).
+	temp_ini : float
+		Temperatura iniziale in Kelvin (default: 20 K).
+	atom_tracker : AtomTracker | list[AtomTracker] | None
+		Strumento(i) per tracciare la posizione di specifici atomi (opzionale).
+	xyz_writer : XYZwriter | None
+		Strumento per salvare le posizioni in formato XYZ (opzionale).
+  
+	Methods
+	-------
+	run_dynamics(n_steps: int, t_th: float = 0, rescale_velocity: bool = False, debug: bool = False) \
+     -> CrystalDynamicsResult
+		Esegue la dinamica molecolare per un numero specificato di passi.
 	"""
 
 	def __init__(
@@ -64,7 +84,8 @@ class CrystalDynamics:
 	@xyz_writer.setter
 	def xyz_writer(self, writer: XYZwriter) -> None:
 		if writer.dump_interval < 10:
-			warnings.warn("⚠️ Attenzione: un dump_interval troppo piccolo può rallentare la simulazione e saturare il disco.", UserWarning)
+			warnings.warn("⚠️ Attenzione: un dump_interval troppo piccolo \
+       può rallentare la simulazione e saturare il disco.", UserWarning)
    
 		self._xyz_writer = writer 
    	
@@ -159,14 +180,14 @@ class CrystalDynamics:
 
 	# NOTE: deprecated, usare CrystalDynamicsResult
 	def _output_state(self, filename, step, E_tot, E_pot, E_kin, temp) -> None:
-		"""Scrive lo stato della simulazione (come in CrystalDynamics)."""
+		""" Salva lo stato della simulazione. """
 
 		with open(filename, "w") as f:
 			f.write(f"{step * self.dt} \t {E_tot} \t {E_pot} \t {E_kin} \t {temp}\n")
 
 	# NOTE: deprecated, usare XYZwriter
 	def _output_positions(self, foldername, step, n_steps) -> None:
-		"""Salva le posizioni istantanee (stesso formato dell'originale)."""
+		""" Salva le posizioni istantanee (stesso formato dell'originale). """
 
 		width = len(str(n_steps))
 		step_str = f"{step:0{width}d}"
@@ -184,9 +205,32 @@ class CrystalDynamics:
                     rescale_velocity: bool = False,
                     debug: bool = False,
                     track_last=False, n_print=None, output=False #NOTE: deprecated arguments
-                ) -> CrystalDynamicsResult:
-     
-		"""Esegue la dinamica molecolare per `n_steps` step."""			
+    ) -> CrystalDynamicsResult:
+		"""
+  		Esegue la dinamica molecolare per `n_steps` step.
+    	
+		Parameters
+		----------
+		n_steps : int
+			Numero totale di passi della simulazione.
+		t_th : float, optional
+			Tempo di termalizzazione in secondi (default: 0 s).
+		rescale_velocity : bool, optional
+			Se True, ricalcola la velocità per mantenere la temperatura costante (default: False).
+		debug : bool, optional
+			Se True, stampa informazioni di debug ad ogni passo (default: False).
+		track_last : bool, optional
+			Se True, traccia l'ultimo atomo (default: False).
+		n_print : int | None, optional
+			Numero di passi tra le stampe di debug (default: None).
+		output : bool, optional
+			Se True, salva lo stato della simulazione ad ogni passo (default: False).
+
+		Returns
+		-------
+		CrystalDynamicsResult
+			Oggetto contenente i risultati della simulazione.
+     	"""			
 
 		if getattr(self.crystal, "neighbour_matrix", None) is None:
 			print(
@@ -213,7 +257,7 @@ class CrystalDynamics:
 	
 
 		# LOOP TERMALIZZAZIONE ------------------------------
-		steps_th = int(t_th / self.dt)
+		steps_th = int(t_th / self.dt) if t_th > 0 else 0
 		for step in range(steps_th):
 			self._update_positions()
 			self._update_neighbours_distances()
@@ -281,7 +325,41 @@ class CrystalDynamics:
 
 @dataclass
 class CrystalDynamicsResult:
-	"""Classe per gestire i risultati di una simulazione di dinamica molecolare."""
+	"""
+ 	CrystalDynamicsResult
+	=====================
+ 	Classe per gestire i risultati di una simulazione di dinamica molecolare.
+
+	Attributes
+	----------
+	time_step : float
+		Il passo temporale della simulazione in secondi.
+	num_steps : int
+		Il numero totale di passi della simulazione.
+	steps_th : int
+		Il numero di passi di termalizzazione.
+	energies : Dict[str, np.ndarray]
+		Un dizionario contenente array di energie ('total', 'kinetic', 'potential').
+	temperatures : np.ndarray
+		Un array contenente le temperature ad ogni passo.
+	trajectory_folder_path : Optional[str]
+		Il percorso della cartella contenente i file di traiettoria XYZ (se salvati).
+	adatom_file_path : Optional[str]
+		Una lista di percorsi dei file di tracking degli adatom (se salvati).
+	mean_temp : float
+		La temperatura media calcolata dopo la simulazione.
+	final_temp : float
+		La temperatura finale della simulazione.
+	mean_E_tot : float
+		L'energia totale media calcolata dopo la simulazione.
+	std_E_tot : float
+		La deviazione standard dell'energia totale calcolata dopo la simulazione.
+  
+	Methods
+	-------
+	summary() -> None
+		Stampa un riepilogo dei risultati della simulazione.
+	"""
  
 	# --- 1. CAMPI OBBLIGATORI (vanno passati quando crei l'oggetto) ---
 	time_step: float
@@ -322,9 +400,8 @@ class CrystalDynamicsResult:
 			self.mean_E_tot = np.nan
 			self.std_E_tot = np.nan
    
-
-	# Metodo per stampare info utili
 	def summary(self) -> None:
+		""" Stampa un riepilogo dei risultati della simulazione. """
 		print (f"Simulation Result:\n"
 				f" - Duration: {self.time_step*self.num_steps:.2f} ps\n"
 				f" - Mean Temp: {self.mean_temp:.2f} ± {self.std_temp:.2f} K\n"

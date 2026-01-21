@@ -73,13 +73,13 @@ class PolynomialJunction:
       +204* R_P**3)* sigma**6) )
   
   @property
-  def coeffs_array(self):
+  def coeffs_array(self) -> np.ndarray:
     return np.array([self.A, self.B, self.C, self.D, self.E, self.F, self.G, self.H])
   
-  def eval(self, r):
+  def eval(self, r) -> float:
     return (self.A + self.B*r + self.C*r**2 + self.D*r**3 + 
     self.E*r**4 + self.F*r**5 + self.G*r**6 + self.H*r**7)
     
-  def eval_derivative(self, r):
+  def eval_derivative(self, r) -> float:
     return (self.B + 2*self.C*r + 3*self.D*r**2 + 4*self.E*r**3 + 
     5*self.F*r**4 + 6*self.G*r**5 + 7*self.H*r**6)
