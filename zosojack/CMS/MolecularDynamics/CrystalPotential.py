@@ -59,7 +59,7 @@ def _forces_kernel(positions: np.ndarray,
                    sigma: float, 
                    epsilon: float, 
                    coeffs: np.ndarray, 
-                   pcb: np.ndarray) -> np.ndarray:
+                   pbc: np.ndarray) -> np.ndarray:
     
     N = positions.shape[0]
     forces = np.zeros((N, 3), dtype=np.float64)
@@ -69,8 +69,8 @@ def _forces_kernel(positions: np.ndarray,
     if coeffs is not None:
         _,B,C,D,E,F,G,H = coeffs
         
-    if pcb is not None:
-        Lx, Ly, Lz = pcb[0], pcb[1], pcb[2]
+    if pbc is not None:
+        Lx, Ly, Lz = pbc[0], pbc[1], pbc[2]
 
     for i in range(N):
         x_i, y_i, z_i = positions[i, 0], positions[i, 1], positions[i, 2]
@@ -199,7 +199,7 @@ class CrystalPotential:
         dist = self.crystal.distance_matrix
         m1 = self.crystal.neighbour_matrix
         m2 = self.crystal.second_neighbour_matrix
-        pcb = self.crystal.pcb
+        pbc = self.crystal.pbc
 
         coeffs = None
         
@@ -208,4 +208,4 @@ class CrystalPotential:
         elif self.poly7 is not None:
             coeffs = self.poly7.coeffs_array
 
-        return _forces_kernel(pos, dist, m1, m2, self.sigma, self.epsilon, coeffs, pcb)
+        return _forces_kernel(pos, dist, m1, m2, self.sigma, self.epsilon, coeffs, pbc)

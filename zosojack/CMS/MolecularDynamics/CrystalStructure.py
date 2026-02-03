@@ -49,7 +49,7 @@ def _find_neighbour_masks_kernel(positions,
                                  R_P,
                                  R_C,
                                  R_V,
-                                 pcb) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                                 pbc) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     '''
     HACK: poiché rij viene salvato solo per i vicini, i confronti vengono effettuati
     senza calcolarne la radice quadrata, per efficienza. Per farlo, anche R_P, R_C e R_V
@@ -66,8 +66,8 @@ def _find_neighbour_masks_kernel(positions,
     second = np.zeros((N, N), dtype=np.bool_)
     dist = np.full((N, N), np.inf) # inf se non vicini, 0 se stessi
     
-    if pcb is not None:
-        Lx, Ly, Lz = pcb[0], pcb[1], pcb[2]
+    if pbc is not None:
+        Lx, Ly, Lz = pbc[0], pbc[1], pbc[2]
     
     # RICALCOLO TUTTE LE DISTANZE
     for i in range(N):
@@ -109,7 +109,7 @@ def _only_neighbours_distance_kernel(positions,
                                      R_V,
                                      neighbour, 
                                      second, 
-                                     pcb) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                                     pbc) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     
     '''
 
@@ -119,7 +119,7 @@ def _only_neighbours_distance_kernel(positions,
     R_C_squared = R_C*R_C
     R_V_squared = R_V*R_V
     # Per la periodicità al contorno
-    Lx, Ly, Lz = pcb[0], pcb[1], pcb[2]
+    Lx, Ly, Lz = pbc[0], pbc[1], pbc[2]
     # Per i loop
     N = positions.shape[0]
     # Nuova matrice delle distanze
@@ -199,7 +199,7 @@ class CrystalStructure:
         Flag che indica se matrici di vicini e distanze sono aggiornate.
     reference_positions : np.ndarray | None
         Copia delle posizioni quando i vicini sono stati calcolati.
-    pcb : np.ndarray
+    pbc : np.ndarray
         Dimensioni della cella per le condizioni periodiche.
         
     Properties
@@ -229,7 +229,7 @@ class CrystalStructure:
         Imposta il punto di giunzione polinomiale R_P.
     set_R_V(R_V) -> None
         Imposta la grandezza della Verlet cage R_V.
-    set_pbc(pcb) -> None
+    set_pbc(pbc) -> None
         Imposta la dimensione della cella per la periodicità al contorno.
     add_atom(position) -> None
         Aggiunge un atomo alla struttura cristallina.
@@ -257,7 +257,7 @@ class CrystalStructure:
         self.reference_positions = None  # posizioni di riferimento per la Verlet cage
         
         # 16.6416 è la dimensione ideale della cella per Ag in Å
-        self.pcb = np.full(3, 1664.16) # *100 così di default non considera la periodicità
+        self.pbc = np.full(3, 1664.16) # *100 così di default non considera la periodicità
         
     @classmethod
     def from_file(cls, filename) -> CrystalStructure:
@@ -336,12 +336,14 @@ class CrystalStructure:
             dist = self.distance_matrix
             
         # Maschera gli zeri e trova il minimo globale (scalare)
-        passo_reticolare = np.min(np.where(dist < 1e-5, np.inf, dist))
+        passo_reticolare = np.min(np.where(dist < 0.5, np.inf, dist))
         
         min_pos = np.min(self.positions, axis=0)
         max_pos = np.max(self.positions, axis=0)
+        PM = (min_pos + max_pos) / 2.0
         
-        center = (min_pos + max_pos) / 2.0 + (passo_reticolare / 2)
+        # punto medio tra questo e quello dopo
+        center = PM + (passo_reticolare / 2.0) 
         
         return center
         
@@ -390,7 +392,7 @@ class CrystalStructure:
             raise ValueError(f"R_V ({R_V}) non può essere minore di R_C ({self.R_C}).")
         self.R_V = R_V
         
-    def set_pbc(self, pcb) -> None:
+    def set_pbc(self, pbc) -> None:
         """
         Imposta la dimensione della cella per la condizione di periodicità al contorno.
         Deve essere un array-like di 3 elementi.
@@ -399,20 +401,20 @@ class CrystalStructure:
 
         Parameters
         ----------
-        pcb : array-like
+        pbc : array-like
             Dimensioni della cella (Lx, Ly, Lz) in Å; usare np.inf per direzione non periodica.
         """
         # controllo lunghezza
-        if len(pcb) != 3:
-            raise ValueError("pcb deve essere un array-like di 3 elementi: (Lx, Ly, Lz).")
+        if len(pbc) != 3:
+            raise ValueError("pbc deve essere un array-like di 3 elementi: (Lx, Ly, Lz).")
         # controllo consistenza con R_C
-        if self.R_C >= 0.5 * min(pcb):
+        if self.R_C >= 0.5 * min(pbc):
             raise ValueError("⚠️ Attenzione: R_C deve essere minore della metà della dimensione della cella.")
         # per ricevere inf, deve convertirlo in un float molto grande
-        if any(element == np.inf for element in pcb):
-            pcb = [element if element != np.inf else 100*np.max(pcb) for element in pcb]
+        if any(element == np.inf for element in pbc):
+            pbc = [element if element != np.inf else 100*np.max(pbc) for element in pbc]
         
-        self.pcb = np.asarray(pcb, dtype=np.float64)
+        self.pbc = np.asarray(pbc, dtype=np.float64)
     
     # TODO: metodo per aggiungere più atomi contemporaneamente?
     def add_atom(self, position) -> None:
@@ -446,7 +448,7 @@ class CrystalStructure:
                                                                self.R_P, 
                                                                self.R_C, 
                                                                self.R_V, 
-                                                               self.pcb)
+                                                               self.pbc)
         # aggiorno le matrici dei vicini e delle distanze
         self.neighbour_matrix = neighbour
         self.second_neighbour_matrix = second
@@ -472,7 +474,7 @@ class CrystalStructure:
                                                                    self.R_V, 
                                                                    self.neighbour_matrix, 
                                                                    self.distance_matrix, 
-                                                                   self.pcb)
+                                                                   self.pbc)
         # aggiorno le matrici dei vicini e delle distanze
         self.neighbour_matrix = neighbour
         self.second_neighbour_matrix = second

@@ -1,3 +1,4 @@
+# CMS/__init__.py
 """Computational Materials Science - Main CMS module"""
 
 from . import MolecularDynamics
@@ -17,6 +18,7 @@ from .MolecularDynamics import (
 from .MonteCarlo import (
     KineticMonteCarlo,
     MetropolisMonteCarlo,
+    ioKMC,
 )
 
 __all__ = [
@@ -29,4 +31,5 @@ __all__ = [
     'PolynomialJunction',
     'SteepestDescend',
     'io',
+    'ioKMC',
 ]

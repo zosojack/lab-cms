@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, Optional
+from numba import njit
 
 from CMS.MolecularDynamics.CrystalStructure import CrystalStructure
 from CMS.MolecularDynamics.CrystalPotential import CrystalPotential
@@ -16,6 +17,91 @@ from CMS.MolecularDynamics.io import AtomTracker, XYZwriter
 k_B = 1 / 11603  # eV/K
 N_A = 1.66053906660E-27  # numero di Avogadro
 
+# funzioni jit
+@njit(cache=True)
+def _remove_rotation(positions: np.ndarray, 
+                     velocities: np.ndarray, 
+                     atomic_mass: float) -> np.ndarray:
+    
+    N = positions.shape[0]
+    
+    # Calcolo del Centro di Massa #
+    r_cdm = np.zeros(3, dtype=np.float64)
+    for i in range(N):
+        r_cdm[0] += positions[i, 0]
+        r_cdm[1] += positions[i, 1]
+        r_cdm[2] += positions[i, 2]
+    r_cdm /= N
+
+    # Inizializzazione accumulatori #
+    L_tot = np.zeros(3, dtype=np.float64)
+    I = np.zeros((3, 3), dtype=np.float64)
+    
+    # Loop unico su tutti gli atomi per riempire L e I #
+    # Usiamo variabili temporanee scalari per velocità
+    for i in range(N):
+        # Braccio (distanza dal cdm)
+        rx = positions[i, 0] - r_cdm[0]
+        ry = positions[i, 1] - r_cdm[1]
+        rz = positions[i, 2] - r_cdm[2]
+        
+        vx = velocities[i, 0]
+        vy = velocities[i, 1]
+        vz = velocities[i, 2]
+        
+        # Momento Angolare: L += r x (m*v)
+        # Nota: moltiplico per la massa alla fine per risparmiare N operazioni
+        L_tot[0] += ry * vz - rz * vy
+        L_tot[1] += rz * vx - rx * vz
+        L_tot[2] += rx * vy - ry * vx
+        
+        # Tensore d'Inerzia (I) #
+        # Elementi diagonali
+        I[0, 0] += ry**2 + rz**2
+        I[1, 1] += rx**2 + rz**2
+        I[2, 2] += rx**2 + ry**2
+        
+        # Elementi fuori diagonale (negativi)
+        I[0, 1] -= rx * ry
+        I[0, 2] -= rx * rz
+        I[1, 2] -= ry * rz
+
+    # Applico la massa (scalare) a tutto il tensore e al vettore L
+    L_tot *= atomic_mass
+    I *= atomic_mass
+    
+    # Simmetrizzo il tensore d'inerzia
+    I[1, 0] = I[0, 1]
+    I[2, 0] = I[0, 2]
+    I[2, 1] = I[1, 2]
+    
+    # Calcolo omega #
+    # Invece di inv(I) @ L, risolviamo il sistema lineare I * omega = L
+    # È più stabile numericamente e piace di più a Numba
+    # Gestiamo il caso patologico (determinante nullo) con un try/except non supportato bene in njit puro,
+    # quindi assumiamo che il sistema 3D non sia degenere (non lineare).
+    omega = np.linalg.solve(I, L_tot)
+    
+    # Correggo le velocità #
+    # v_new = v_old - (omega x r)
+    # Modifico l'array velocities in-place o ne creo uno nuovo
+    v_corrected = np.zeros_like(velocities)
+    
+    for i in range(N):
+        rx = positions[i, 0] - r_cdm[0]
+        ry = positions[i, 1] - r_cdm[1]
+        rz = positions[i, 2] - r_cdm[2]
+        
+        # Prodotto vettoriale omega x r
+        wx_r_x = omega[1] * rz - omega[2] * ry
+        wx_r_y = omega[2] * rx - omega[0] * rz
+        wx_r_z = omega[0] * ry - omega[1] * rx
+        
+        v_corrected[i, 0] = velocities[i, 0] - wx_r_x
+        v_corrected[i, 1] = velocities[i, 1] - wx_r_y
+        v_corrected[i, 2] = velocities[i, 2] - wx_r_z
+        
+    return v_corrected
 class CrystalDynamics:
 	"""
 	CrystalDynamics
@@ -112,8 +198,11 @@ class CrystalDynamics:
 		C = np.sqrt((3 * k_B * self.temp_ini) / self.atomic_mass)
 		vel = np.random.uniform(-C, C, size=(N_atoms, 3))
 
-		# correzione drift (sottraggo la media per ciascun asse)
+		# correzione deriva traslazionale (sottraggo la media per ciascun asse)
 		vel -= vel.mean(axis=0, keepdims=True)
+  
+		# correzione rotazione
+		vel = _remove_rotation(self.crystal.positions, vel, self.atomic_mass)
 
 		# energia cinetica prima del rescaling (identica a prima)
 		E_K = 0.5 * self.atomic_mass * float(np.sum(vel**2))
@@ -307,7 +396,7 @@ class CrystalDynamics:
 					a_t.record_position(step, self.crystal)
 			# Tracking posizioni
 			if self.xyz_writer is not None:
-				self.xyz_writer.write_frame(step, self.crystal.positions)
+				self.xyz_writer.write_frame(step, self.crystal)
 		# FINE LOOP DINAMICA ------------------------------------
   
 		# Risultati finali

@@ -1,13 +1,15 @@
 # KineticMonteCarlo.py
 from __future__ import annotations
 from dataclasses import dataclass, field
-from CMS.MonteCarlo.NumbaSubroutines import (
+from typing import Optional
+from CMS.MonteCarlo.KMCNumbaSubroutines import (
     pbc_corr,
     count_NN,
     find_move,
     _update_NN_deposition,
     _update_NN_diffusion,
 )
+from CMS.MonteCarlo.ioKMC import XYZwriter
 
 import numpy as np
 
@@ -63,6 +65,7 @@ class KineticMonteCarlo:
         nu: float = 1.E+13, # diffusion rate [Hz]
         J0: float = 4*(-0.345), # default: J0 = 4 * J1 [eV]
         J1: float = -0.345, # 2nd neighbor interaction energy [eV]
+        xyz_writer: Optional[XYZwriter] = None,
         seed: int = 123413432,
     ):
     
@@ -72,17 +75,32 @@ class KineticMonteCarlo:
         self.nu = nu
         self.J0 = J0
         self.J1 = J1
-        self.first_neigh: np.ndarray | None = None
-        self.k_diff: np.ndarray | None = None
-        self.k_diff_sum: float | None = None
+        self.first_neigh: Optional[np.ndarray] = None
+        self.k_diff: Optional[np.ndarray] = None
+        self.k_diff_sum: Optional[float] = None
+        self.k_diff_row_sums: Optional[np.ndarray] = None
+        # strumenti di output
+        self.xyz_writer = xyz_writer
         
         np.random.seed(seed)
         
+        # inizializzo la matrice delle altezze
         self.height = np.zeros((self.Lx, self.Ly), dtype=np.float64)
+        
+        # HACK: un atomo può avere 0, 1, 2, 3, 4 primi vicini
+        # i inizializzo una volta sola i 5 possibili rate di diffusione
+        self.rates_lookup = np.zeros(5, dtype=np.float64)
+        inv_kT = 1.0 / (k_B * self.T)
+        for n in range(5):
+            Eb = -(self.J0 + n * self.J1)
+            self.rates_lookup[n] = 4 * self.nu * np.exp(-Eb * inv_kT)
+
+        # inizializzo i rate di diffusione
+        self._initialize_diffusion_rates()
 
         
     def _initialize_diffusion_rates (self) -> None:
-        
+        ''' Inizializza i primi vicini, i rate di diffusione e la loro somma '''
         # se non sono stati inizializzati i primi vicini, vanno calcolati
         if self.first_neigh is None:
             self.first_neigh = count_NN(self.height)
@@ -97,33 +115,36 @@ class KineticMonteCarlo:
         # se non è stata inizializzata la somma dei rate di diffusione, va calcolata
         if self.k_diff_sum is None:
             self.k_diff_sum = np.sum(self.k_diff)
+            
+        # se non è stata inizializzata la somma dei rate di diffusione per riga, va calcolata
+        if self.k_diff_row_sums is None:
+            self.k_diff_row_sums = np.sum(self.k_diff, axis=1)
     
     def _deposition_event (self) -> None:
-        # accorpo i parametri da passare a Numba
-        params = (self.J0, self.J1, self.T, self.nu, k_B)
         # estrae casualmente la posizione in cui depositare un atomo
         x_site = np.random.randint(0, self.Lx)
         y_site = np.random.randint(0, self.Ly)
         # aggiunge un atomo sulla superficie in quella posizone
         self.height[x_site, y_site] += 1.0
         # aggiorna i primi vicini e i rate di diffusione
-        self.first_neigh, self.k_diff, self.k_diff_sum = \
+        self.first_neigh, self.k_diff, self.k_diff_sum, self.k_diff_row_sums = \
             _update_NN_deposition(self.first_neigh,
                                   self.k_diff,
                                   self.k_diff_sum,
+                                  self.k_diff_row_sums,
                                   self.height,
                                   (x_site, y_site),
-                                  params,
+                                  self.rates_lookup,
         )
         
     def _diffusion_event (self,
                           rho: float,
                           k_diff: np.ndarray
     ) -> None:
-        # accorpo i parametri da passare a Numba
-        params = (self.J0, self.J1, self.T, self.nu, k_B)
         # sceglie l'atomo da spostare
-        x0, y0 = find_move(rho=rho, k_diff=k_diff)
+        x0, y0 = find_move(rho=rho, 
+                           k_diff=k_diff, 
+                           current_k_diff_row_sums=self.k_diff_row_sums)
         # sceglie in che direzione spostarlo
         dir = np.random.rand()
         if   dir < 0.25: # sx
@@ -140,14 +161,15 @@ class KineticMonteCarlo:
         # incrementa di 1 l'altezza nella posizione di arrivo x_d, y_d
         self.height[x_d, y_d] += 1
         # aggiorna i primi vicini e i rate di diffusione
-        self.first_neigh, self.k_diff, self.k_diff_sum = \
+        self.first_neigh, self.k_diff, self.k_diff_sum, self.k_diff_row_sums = \
             _update_NN_diffusion(self.first_neigh,
                                  self.k_diff,
                                  self.k_diff_sum,
+                                 self.k_diff_row_sums,
                                  self.height,
                                  (x0, y0),
                                  (x_d, y_d),
-                                 params,
+                                 self.rates_lookup,
         )
         
     def _control_array_size (
@@ -182,9 +204,6 @@ class KineticMonteCarlo:
         n_diffusion_events = 0
         n_deposition_events = 0
         
-        # inizializzo i rate di diffusione
-        self._initialize_diffusion_rates()
-        
         # loop di dinamica KMC
         while time < end_time:
             # calcolo k_tot
@@ -201,6 +220,9 @@ class KineticMonteCarlo:
                 dt_list[n_deposition_events] = time
                 rms_roughness_list[n_deposition_events] = np.std(self.height)
                 n_deposition_events += 1
+                # Tracking deposizioni
+                if self.xyz_writer is not None:
+                    self.xyz_writer.write_frame(time, n_deposition_events, self.height)
             else:
                 rho -= k_depo
                 self._diffusion_event(rho, self.k_diff)
@@ -215,8 +237,9 @@ class KineticMonteCarlo:
         return KineticMonteCarloResult(
             n_deposition_events=n_deposition_events,
             n_diffusion_events=n_diffusion_events,
-            dt_list=np.diff(dt_list), # calcolo differenze di tempo tra eventi di deposizione
-            rms_roughness_list=np.array(rms_roughness_list),
+            # Slice per prendere solo gli eventi registrati prima di calcolare diff
+            dt_list=np.diff(dt_list[:n_deposition_events]), 
+            rms_roughness_list=rms_roughness_list[:n_deposition_events],
             k_depo=k_depo,
         )
             

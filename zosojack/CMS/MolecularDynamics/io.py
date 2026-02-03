@@ -18,7 +18,7 @@ class AtomTracker:
         Indice dell'atomo da tracciare.
     output_file : str
         Percorso del file di output dove salvare le posizioni.
-    pcb_option : str
+    pbc_option : str
         Modalità per le condizioni al contorno: 'periodic' oppure 'unbounded' (default).
         
     Methods
@@ -27,19 +27,19 @@ class AtomTracker:
         Registra la posizione dell'atomo al passo specificato.
     """
     
-    def __init__(self, index: int, output_file: str, pcb_option: str = 'unbounded') -> None:
+    def __init__(self, index: int, output_file: str, pbc_option: str = 'unbounded') -> None:
         """Inizializza il tracciatore di atomi con l'indice dell'atomo da tracciare."""
 
         self.index = index
         self.output_path = Path(output_file) # converte in Path
-        self.set_pcb_option(pcb_option)
+        self.set_pcb_option(pbc_option)
         
         # Crea la cartella se non esiste
         parent_folder = self.output_path.parent
         parent_folder.mkdir(parents=True, exist_ok=True)
         
         with open(self.output_path, 'w') as f:
-            f.write(f"TRAIETTORIA ATOMO {self.index} - {self.pcb_option.upper()}\n")
+            f.write(f"TRAIETTORIA ATOMO {self.index} - {self.pbc_option.upper()}\n")
             f.write(f"step \t x \t y \t z\n")
             
     def set_pcb_option(self, option: str) -> None:
@@ -53,7 +53,7 @@ class AtomTracker:
         """
         if option not in ['periodic', 'unbounded']:
             raise ValueError("L'opzione deve essere 'periodic' o 'unbounded'.")
-        self.pcb_option = option
+        self.pbc_option = option
 
     def record_position(self, step: int, crystal: CrystalStructure) -> None:
         """
@@ -68,9 +68,10 @@ class AtomTracker:
         """
         pos = crystal.positions[self.index].copy()
         
-        if self.pcb_option == 'periodic':
+        if self.pbc_option == 'periodic':
             # Applica le condizioni al contorno periodiche
-            pos -= crystal.pcb * np.floor(crystal.positions[self.index] / crystal.pcb)
+            # estrarre il segno e fare floor sul valore assoluto serve ad evitare problemi con rapporti negativi
+            pos -= crystal.pbc * np.floor(pos / crystal.pbc)
             
         with open(self.output_path, 'a') as f:
             f.write(f"{step} \t {pos[0]} \t {pos[1]} \t {pos[2]}\n")
@@ -92,31 +93,54 @@ class XYZwriter():
         
     Methods
     -------
-    write_frame(step: int, positions: np.ndarray) -> None
+    write_frame(step: int, crystal: CrystalStructure) -> None
         Registra le posizioni di tutti gli atomi nel file di output.
     """
     
-    def __init__(self, output_folder: str, dt: float, dump_interval: int = 200) -> None:
+    def __init__(self, 
+                 output_folder: str, 
+                 dt: float, 
+                 dump_interval: int = 200,
+                 pbc_option: str = 'unbounded') -> None:
         """ Inizializza l'oggetto che registra le traiettorie degli atomi. """
         self.output_folder = Path(output_folder) # converte in Path
         self.dt = dt
         self.dump_interval = dump_interval
+        self.set_pcb_option(pbc_option)
         
         # Crea la cartella se non esiste
         self.output_folder.mkdir(parents=True, exist_ok=True)
+        
+    def set_pcb_option(self, option: str) -> None:
+        """
+        Imposta l'opzione per il trattamento delle condizioni al contorno periodiche.
 
-    def write_frame(self, step: int, positions: np.ndarray) -> None:
+        Parameters
+        ----------
+        option : str
+            'periodic' per condizioni al contorno periodiche, 'unbounded' altrimenti.
+        """
+        if option not in ['periodic', 'unbounded']:
+            raise ValueError("L'opzione deve essere 'periodic' o 'unbounded'.")
+        self.pbc_option = option
+
+    def write_frame(self, step: int, crystal: CrystalStructure) -> None:
         """
         Registra le posizioni di tutti gli atomi nel file di output.
         L'azione è eseguita soltanto ogni dump_interval steps.
 
         Parameters
         ----------
-        positions : np.ndarray
-            Posizioni attuali di tutti gli atomi.
+        crystal : CrystalStructure
+            Struttura cristallina con posizioni e dimensioni della cella per le PBC.
         step : int
             Passo temporale corrente della simulazione.
         """
+        
+        positions = crystal.positions.copy()
+        if self.pbc_option == 'periodic':
+            # Applica le condizioni al contorno periodiche
+            positions -= crystal.pbc * np.round(positions / crystal.pbc)
         if step % self.dump_interval == 0:
             file_index = step // self.dump_interval
             N_atoms = positions.shape[0]
