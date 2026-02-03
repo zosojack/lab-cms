@@ -1,5 +1,6 @@
 # Others
 output/
+**/output/
 zosojack/tutorials/output/
 zosojack/notebooks/output/
 .todo/
