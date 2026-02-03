@@ -1,8 +1,8 @@
 # Crystalpotential
 
-[CMS Index](../README.md#cms-index) / [Moleculardynamics](./index.md#moleculardynamics) / Crystalpotential
+[CMS Index](../../../README.md#cms-index) / `zosojack` / [Cms](../index.md#cms) / [Moleculardynamics](./index.md#moleculardynamics) / Crystalpotential
 
-> Auto-generated documentation for [MolecularDynamics.CrystalPotential](../../zosojack/CMS/MolecularDynamics/CrystalPotential.py) module.
+> Auto-generated documentation for [zosojack.CMS.MolecularDynamics.CrystalPotential](../../../../zosojack/CMS/MolecularDynamics/CrystalPotential.py) module.
 
 - [Crystalpotential](#crystalpotential)
   - [CrystalPotential](#crystalpotential)
@@ -11,7 +11,7 @@
 
 ## CrystalPotential
 
-[Show source in CrystalPotential.py:122](../../zosojack/CMS/MolecularDynamics/CrystalPotential.py#L122)
+[Show source in CrystalPotential.py:122](../../../../zosojack/CMS/MolecularDynamics/CrystalPotential.py#L122)
 
 Classe per calcolare il potenziale e le forze in una struttura cristallina. Implementa
 il potenziale di Lennard-Jones per i primi vicini e un potenziale polinomiale di settimo
@@ -50,7 +50,7 @@ class CrystalPotential:
 
 ### CrystalPotential().compute_forces
 
-[Show source in CrystalPotential.py:188](../../zosojack/CMS/MolecularDynamics/CrystalPotential.py#L188)
+[Show source in CrystalPotential.py:188](../../../../zosojack/CMS/MolecularDynamics/CrystalPotential.py#L188)
 
 Calcola le forze sugli atomi del cristallo.
 
@@ -62,7 +62,7 @@ def compute_forces(self) -> np.ndarray: ...
 
 ### CrystalPotential().compute_potential
 
-[Show source in CrystalPotential.py:158](../../zosojack/CMS/MolecularDynamics/CrystalPotential.py#L158)
+[Show source in CrystalPotential.py:158](../../../../zosojack/CMS/MolecularDynamics/CrystalPotential.py#L158)
 
 Calcola il potenziale totale del cristallo.
 

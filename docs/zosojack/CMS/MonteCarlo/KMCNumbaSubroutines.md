@@ -1,10 +1,10 @@
-# Numbasubroutines
+# Kmcnumbasubroutines
 
-[CMS Index](../README.md#cms-index) / [Montecarlo](./index.md#montecarlo) / Numbasubroutines
+[CMS Index](../../../README.md#cms-index) / `zosojack` / [Cms](../index.md#cms) / [Montecarlo](./index.md#montecarlo) / Kmcnumbasubroutines
 
-> Auto-generated documentation for [MonteCarlo.NumbaSubroutines](../../zosojack/CMS/MonteCarlo/NumbaSubroutines.py) module.
+> Auto-generated documentation for [zosojack.CMS.MonteCarlo.KMCNumbaSubroutines](../../../../zosojack/CMS/MonteCarlo/KMCNumbaSubroutines.py) module.
 
-- [Numbasubroutines](#numbasubroutines)
+- [Kmcnumbasubroutines](#kmcnumbasubroutines)
   - [_update_NN_deposition](#_update_nn_deposition)
   - [_update_NN_diffusion](#_update_nn_diffusion)
   - [count_NN](#count_nn)
@@ -14,7 +14,7 @@
 
 ## _update_NN_deposition
 
-[Show source in NumbaSubroutines.py:50](../../zosojack/CMS/MonteCarlo/NumbaSubroutines.py#L50)
+[Show source in KMCNumbaSubroutines.py:50](../../../../zosojack/CMS/MonteCarlo/KMCNumbaSubroutines.py#L50)
 
 Aggiorna i primi vicini e la matrice dei rate di diffusione dopo un evento di deposizione;
 agisce solamente sui siti coinvolti nell'evento.
@@ -27,9 +27,10 @@ def _update_NN_deposition(
     first_neigh: np.ndarray,
     k_diff: np.ndarray,
     current_k_diff_sum: float,
+    current_k_diff_row_sums: np.ndarray,
     height: np.ndarray,
     deposition_site: tuple[int, int],
-    params: tuple,
+    rates_lookup: np.ndarray,
 ) -> np.ndarray: ...
 ```
 
@@ -37,7 +38,7 @@ def _update_NN_deposition(
 
 ## _update_NN_diffusion
 
-[Show source in NumbaSubroutines.py:88](../../zosojack/CMS/MonteCarlo/NumbaSubroutines.py#L88)
+[Show source in KMCNumbaSubroutines.py:91](../../../../zosojack/CMS/MonteCarlo/KMCNumbaSubroutines.py#L91)
 
 Aggiorna i primi vicini e la matrice dei rate di diffusione dopo un evento di diffusione;
 agisce solamente sui siti coinvolti nell'evento.
@@ -50,10 +51,11 @@ def _update_NN_diffusion(
     first_neigh: np.ndarray,
     k_diff: np.ndarray,
     current_k_diff_sum: float,
+    current_k_diff_row_sums: np.ndarray,
     height: np.ndarray,
     diffusion_from: tuple[int, int],
     diffusion_to: tuple[int, int],
-    params: tuple,
+    rates_lookup: np.ndarray,
 ) -> np.ndarray: ...
 ```
 
@@ -61,7 +63,7 @@ def _update_NN_diffusion(
 
 ## count_NN
 
-[Show source in NumbaSubroutines.py:37](../../zosojack/CMS/MonteCarlo/NumbaSubroutines.py#L37)
+[Show source in KMCNumbaSubroutines.py:37](../../../../zosojack/CMS/MonteCarlo/KMCNumbaSubroutines.py#L37)
 
 Produce una matrice di interi che contiene il numero di primi vicini per ciascun atomo sulla superficie
 
@@ -76,23 +78,26 @@ def count_NN(height: np.ndarray) -> np.ndarray: ...
 
 ## find_move
 
-[Show source in NumbaSubroutines.py:134](../../zosojack/CMS/MonteCarlo/NumbaSubroutines.py#L134)
+[Show source in KMCNumbaSubroutines.py:140](../../../../zosojack/CMS/MonteCarlo/KMCNumbaSubroutines.py#L140)
 
 Percorre la matrice dei rate di diffusione fino a raggiungere un valore >= rho;
 restituisce le coordinate (x,y) dell'atomo da muovere.
+Utilizza la somma per riga dei rate di diffusione per velocizzare la ricerca.
 
 #### Signature
 
 ```python
 @njit
-def find_move(rho: float, k_diff: np.ndarray) -> tuple: ...
+def find_move(
+    rho: float, k_diff: np.ndarray, current_k_diff_row_sums: np.ndarray
+) -> tuple: ...
 ```
 
 
 
 ## neigh_XY
 
-[Show source in NumbaSubroutines.py:15](../../zosojack/CMS/MonteCarlo/NumbaSubroutines.py#L15)
+[Show source in KMCNumbaSubroutines.py:15](../../../../zosojack/CMS/MonteCarlo/KMCNumbaSubroutines.py#L15)
 
 Conta quanti primi vicini possiede l'atomo sulla superficie in posizione X,Y
 
@@ -107,7 +112,7 @@ def neigh_XY(x_i: float, y_i: float, height: np.ndarray) -> int: ...
 
 ## pbc_corr
 
-[Show source in NumbaSubroutines.py:6](../../zosojack/CMS/MonteCarlo/NumbaSubroutines.py#L6)
+[Show source in KMCNumbaSubroutines.py:6](../../../../zosojack/CMS/MonteCarlo/KMCNumbaSubroutines.py#L6)
 
 Correzione condizione periodica al contorno
 

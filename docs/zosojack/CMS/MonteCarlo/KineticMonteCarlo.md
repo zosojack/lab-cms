@@ -1,8 +1,8 @@
 # Kineticmontecarlo
 
-[CMS Index](../README.md#cms-index) / [Montecarlo](./index.md#montecarlo) / Kineticmontecarlo
+[CMS Index](../../../README.md#cms-index) / `zosojack` / [Cms](../index.md#cms) / [Montecarlo](./index.md#montecarlo) / Kineticmontecarlo
 
-> Auto-generated documentation for [MonteCarlo.KineticMonteCarlo](../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py) module.
+> Auto-generated documentation for [zosojack.CMS.MonteCarlo.KineticMonteCarlo](../../../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py) module.
 
 #### Attributes
 
@@ -11,12 +11,13 @@
 
 - [Kineticmontecarlo](#kineticmontecarlo)
   - [KineticMonteCarlo](#kineticmontecarlo)
+    - [KineticMonteCarlo()._initialize_diffusion_rates](#kineticmontecarlo()_initialize_diffusion_rates)
     - [KineticMonteCarlo().run](#kineticmontecarlo()run)
   - [KineticMonteCarloResult](#kineticmontecarloresult)
 
 ## KineticMonteCarlo
 
-[Show source in KineticMonteCarlo.py:17](../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py#L17)
+[Show source in KineticMonteCarlo.py:19](../../../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py#L19)
 
 KineticMonteCarlo
 =================
@@ -68,13 +69,26 @@ class KineticMonteCarlo:
         nu: float = 10000000000000.0,
         J0: float = 4 * -0.345,
         J1: float = -0.345,
+        xyz_writer: Optional[XYZwriter] = None,
         seed: int = 123413432,
     ): ...
 ```
 
+### KineticMonteCarlo()._initialize_diffusion_rates
+
+[Show source in KineticMonteCarlo.py:102](../../../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py#L102)
+
+Inizializza i primi vicini, i rate di diffusione e la loro somma
+
+#### Signature
+
+```python
+def _initialize_diffusion_rates(self) -> None: ...
+```
+
 ### KineticMonteCarlo().run
 
-[Show source in KineticMonteCarlo.py:167](../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py#L167)
+[Show source in KineticMonteCarlo.py:189](../../../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py#L189)
 
 #### Signature
 
@@ -90,7 +104,7 @@ def run(self, end_time: float) -> KineticMonteCarloResult: ...
 
 ## KineticMonteCarloResult
 
-[Show source in KineticMonteCarlo.py:224](../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py#L224)
+[Show source in KineticMonteCarlo.py:247](../../../../zosojack/CMS/MonteCarlo/KineticMonteCarlo.py#L247)
 
 #### Attributes
 

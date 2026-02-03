@@ -1,8 +1,8 @@
 # Crystaldynamics
 
-[CMS Index](../README.md#cms-index) / [Moleculardynamics](./index.md#moleculardynamics) / Crystaldynamics
+[CMS Index](../../../README.md#cms-index) / `zosojack` / [Cms](../index.md#cms) / [Moleculardynamics](./index.md#moleculardynamics) / Crystaldynamics
 
-> Auto-generated documentation for [MolecularDynamics.CrystalDynamics](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py) module.
+> Auto-generated documentation for [zosojack.CMS.MolecularDynamics.CrystalDynamics](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py) module.
 
 #### Attributes
 
@@ -31,7 +31,7 @@
 
 ## CrystalDynamics
 
-[Show source in CrystalDynamics.py:19](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L19)
+[Show source in CrystalDynamics.py:105](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L105)
 
 CrystalDynamics
 ===============
@@ -74,7 +74,7 @@ class CrystalDynamics:
 
 ### CrystalDynamics()._output_positions
 
-[Show source in CrystalDynamics.py:189](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L189)
+[Show source in CrystalDynamics.py:278](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L278)
 
 Salva le posizioni istantanee (stesso formato dell'originale).
 
@@ -86,7 +86,7 @@ def _output_positions(self, foldername, step, n_steps) -> None: ...
 
 ### CrystalDynamics()._output_state
 
-[Show source in CrystalDynamics.py:182](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L182)
+[Show source in CrystalDynamics.py:271](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L271)
 
 Salva lo stato della simulazione.
 
@@ -98,7 +98,7 @@ def _output_state(self, filename, step, E_tot, E_pot, E_kin, temp) -> None: ...
 
 ### CrystalDynamics()._random_velocities
 
-[Show source in CrystalDynamics.py:108](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L108)
+[Show source in CrystalDynamics.py:194](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L194)
 
 Inizializza le velocità casuali (stesso algoritmo dell'originale).
 
@@ -110,7 +110,7 @@ def _random_velocities(self) -> None: ...
 
 ### CrystalDynamics()._temperature
 
-[Show source in CrystalDynamics.py:173](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L173)
+[Show source in CrystalDynamics.py:262](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L262)
 
 Restituisce la temperatura attuale del sistema.
 
@@ -122,7 +122,7 @@ def _temperature(self) -> float: ...
 
 ### CrystalDynamics()._update_forces
 
-[Show source in CrystalDynamics.py:148](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L148)
+[Show source in CrystalDynamics.py:237](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L237)
 
 Calcola le forze usando la versione numpy del potenziale.
 
@@ -134,7 +134,7 @@ def _update_forces(self, poly7=None) -> None: ...
 
 ### CrystalDynamics()._update_neighbours_distances
 
-[Show source in CrystalDynamics.py:132](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L132)
+[Show source in CrystalDynamics.py:221](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L221)
 
 Aggiorna le distanze tra gli atomi.
 Se le posizioni non sono cambiate più di un valore soglia, sono ricalcolate soltanto
@@ -150,7 +150,7 @@ def _update_neighbours_distances(self) -> None: ...
 
 ### CrystalDynamics()._update_positions
 
-[Show source in CrystalDynamics.py:125](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L125)
+[Show source in CrystalDynamics.py:214](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L214)
 
 Aggiorna le posizioni con Velocity-Verlet (stessa formula).
 
@@ -162,7 +162,7 @@ def _update_positions(self) -> None: ...
 
 ### CrystalDynamics()._update_velocities
 
-[Show source in CrystalDynamics.py:153](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L153)
+[Show source in CrystalDynamics.py:242](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L242)
 
 Aggiorna le velocità.
 Se rescale_velocity è True, ricalcola la velocità per mantenere la temperatura costante.
@@ -175,7 +175,7 @@ def _update_velocities(self, rescale_velocity: bool = False) -> None: ...
 
 ### CrystalDynamics().atom_tracker
 
-[Show source in CrystalDynamics.py:92](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L92)
+[Show source in CrystalDynamics.py:178](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L178)
 
 #### Signature
 
@@ -186,7 +186,7 @@ def atom_tracker(self): ...
 
 ### CrystalDynamics().atom_tracker
 
-[Show source in CrystalDynamics.py:96](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L96)
+[Show source in CrystalDynamics.py:182](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L182)
 
 #### Signature
 
@@ -197,7 +197,7 @@ def atom_tracker(self, tracker: AtomTracker | list[AtomTracker]) -> None: ...
 
 ### CrystalDynamics().run_dynamics
 
-[Show source in CrystalDynamics.py:202](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L202)
+[Show source in CrystalDynamics.py:291](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L291)
 
 Esegue la dinamica molecolare per `n_steps` step.
 
@@ -244,7 +244,7 @@ def run_dynamics(
 
 ### CrystalDynamics().set_seed
 
-[Show source in CrystalDynamics.py:104](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L104)
+[Show source in CrystalDynamics.py:190](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L190)
 
 Imposta il seed del generatore pseudo-casuale.
 
@@ -256,7 +256,7 @@ def set_seed(self, myseed) -> None: ...
 
 ### CrystalDynamics().xyz_writer
 
-[Show source in CrystalDynamics.py:80](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L80)
+[Show source in CrystalDynamics.py:166](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L166)
 
 #### Signature
 
@@ -267,7 +267,7 @@ def xyz_writer(self): ...
 
 ### CrystalDynamics().xyz_writer
 
-[Show source in CrystalDynamics.py:84](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L84)
+[Show source in CrystalDynamics.py:170](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L170)
 
 #### Signature
 
@@ -280,7 +280,7 @@ def xyz_writer(self, writer: XYZwriter) -> None: ...
 
 ## CrystalDynamicsResult
 
-[Show source in CrystalDynamics.py:327](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L327)
+[Show source in CrystalDynamics.py:416](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L416)
 
 #### Attributes
 
@@ -336,7 +336,7 @@ class CrystalDynamicsResult: ...
 
 ### CrystalDynamicsResult().__post_init__
 
-[Show source in CrystalDynamics.py:385](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L385)
+[Show source in CrystalDynamics.py:474](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L474)
 
 Questo metodo viene eseguito automaticamente SUBITO DOPO l'__init__.
 Usato per calcolare le statistiche derivate (medie e dev st).
@@ -349,7 +349,7 @@ def __post_init__(self): ...
 
 ### CrystalDynamicsResult().summary
 
-[Show source in CrystalDynamics.py:403](../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L403)
+[Show source in CrystalDynamics.py:492](../../../../zosojack/CMS/MolecularDynamics/CrystalDynamics.py#L492)
 
 Stampa un riepilogo dei risultati della simulazione.
 

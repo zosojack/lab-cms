@@ -1,8 +1,8 @@
 # Polynomialjunction
 
-[CMS Index](../README.md#cms-index) / [Moleculardynamics](./index.md#moleculardynamics) / Polynomialjunction
+[CMS Index](../../../README.md#cms-index) / `zosojack` / [Cms](../index.md#cms) / [Moleculardynamics](./index.md#moleculardynamics) / Polynomialjunction
 
-> Auto-generated documentation for [MolecularDynamics.PolynomialJunction](../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py) module.
+> Auto-generated documentation for [zosojack.CMS.MolecularDynamics.PolynomialJunction](../../../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py) module.
 
 - [Polynomialjunction](#polynomialjunction)
   - [PolynomialJunction](#polynomialjunction)
@@ -12,7 +12,7 @@
 
 ## PolynomialJunction
 
-[Show source in PolynomialJunction.py:4](../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L4)
+[Show source in PolynomialJunction.py:4](../../../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L4)
 
 PolynomialJunction
 =====================
@@ -40,7 +40,7 @@ class PolynomialJunction:
 
 ### PolynomialJunction().coeffs_array
 
-[Show source in PolynomialJunction.py:75](../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L75)
+[Show source in PolynomialJunction.py:75](../../../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L75)
 
 #### Signature
 
@@ -51,7 +51,7 @@ def coeffs_array(self) -> np.ndarray: ...
 
 ### PolynomialJunction().eval
 
-[Show source in PolynomialJunction.py:79](../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L79)
+[Show source in PolynomialJunction.py:79](../../../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L79)
 
 #### Signature
 
@@ -61,7 +61,7 @@ def eval(self, r) -> float: ...
 
 ### PolynomialJunction().eval_derivative
 
-[Show source in PolynomialJunction.py:83](../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L83)
+[Show source in PolynomialJunction.py:83](../../../../zosojack/CMS/MolecularDynamics/PolynomialJunction.py#L83)
 
 #### Signature
 

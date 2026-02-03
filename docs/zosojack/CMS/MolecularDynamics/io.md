@@ -1,19 +1,20 @@
 # Io
 
-[CMS Index](../README.md#cms-index) / [Moleculardynamics](./index.md#moleculardynamics) / Io
+[CMS Index](../../../README.md#cms-index) / `zosojack` / [Cms](../index.md#cms) / [Moleculardynamics](./index.md#moleculardynamics) / Io
 
-> Auto-generated documentation for [MolecularDynamics.io](../../zosojack/CMS/MolecularDynamics/io.py) module.
+> Auto-generated documentation for [zosojack.CMS.MolecularDynamics.io](../../../../zosojack/CMS/MolecularDynamics/io.py) module.
 
 - [Io](#io)
   - [AtomTracker](#atomtracker)
     - [AtomTracker().record_position](#atomtracker()record_position)
     - [AtomTracker().set_pcb_option](#atomtracker()set_pcb_option)
   - [XYZwriter](#xyzwriter)
+    - [XYZwriter().set_pcb_option](#xyzwriter()set_pcb_option)
     - [XYZwriter().write_frame](#xyzwriter()write_frame)
 
 ## AtomTracker
 
-[Show source in io.py:9](../../zosojack/CMS/MolecularDynamics/io.py#L9)
+[Show source in io.py:9](../../../../zosojack/CMS/MolecularDynamics/io.py#L9)
 
 AtomTracker
 ===========
@@ -44,7 +45,7 @@ class AtomTracker:
 
 ### AtomTracker().record_position
 
-[Show source in io.py:58](../../zosojack/CMS/MolecularDynamics/io.py#L58)
+[Show source in io.py:58](../../../../zosojack/CMS/MolecularDynamics/io.py#L58)
 
 Registra le posizioni degli atomi tracciati nel file di output.
 
@@ -63,7 +64,7 @@ def record_position(self, step: int, crystal: CrystalStructure) -> None: ...
 
 ### AtomTracker().set_pcb_option
 
-[Show source in io.py:45](../../zosojack/CMS/MolecularDynamics/io.py#L45)
+[Show source in io.py:45](../../../../zosojack/CMS/MolecularDynamics/io.py#L45)
 
 Imposta l'opzione per il trattamento delle condizioni al contorno periodiche.
 
@@ -82,7 +83,7 @@ def set_pcb_option(self, option: str) -> None: ...
 
 ## XYZwriter
 
-[Show source in io.py:78](../../zosojack/CMS/MolecularDynamics/io.py#L78)
+[Show source in io.py:79](../../../../zosojack/CMS/MolecularDynamics/io.py#L79)
 
 XYZwriter
 ==========
@@ -99,7 +100,7 @@ dump_interval : int
 
 Methods
 -------
-write_frame(step: int, positions: np.ndarray) -> None
+write_frame(step: int, crystal: CrystalStructure) -> None
     Registra le posizioni di tutti gli atomi nel file di output.
 
 #### Signature
@@ -107,26 +108,47 @@ write_frame(step: int, positions: np.ndarray) -> None
 ```python
 class XYZwriter:
     def __init__(
-        self, output_folder: str, dt: float, dump_interval: int = 200
+        self,
+        output_folder: str,
+        dt: float,
+        dump_interval: int = 200,
+        pbc_option: str = "unbounded",
     ) -> None: ...
+```
+
+### XYZwriter().set_pcb_option
+
+[Show source in io.py:114](../../../../zosojack/CMS/MolecularDynamics/io.py#L114)
+
+Imposta l'opzione per il trattamento delle condizioni al contorno periodiche.
+
+Parameters
+----------
+option : str
+    'periodic' per condizioni al contorno periodiche, 'unbounded' altrimenti.
+
+#### Signature
+
+```python
+def set_pcb_option(self, option: str) -> None: ...
 ```
 
 ### XYZwriter().write_frame
 
-[Show source in io.py:108](../../zosojack/CMS/MolecularDynamics/io.py#L108)
+[Show source in io.py:127](../../../../zosojack/CMS/MolecularDynamics/io.py#L127)
 
 Registra le posizioni di tutti gli atomi nel file di output.
 L'azione è eseguita soltanto ogni dump_interval steps.
 
 Parameters
 ----------
-positions : np.ndarray
-    Posizioni attuali di tutti gli atomi.
+crystal : CrystalStructure
+    Struttura cristallina con posizioni e dimensioni della cella per le PBC.
 step : int
     Passo temporale corrente della simulazione.
 
 #### Signature
 
 ```python
-def write_frame(self, step: int, positions: np.ndarray) -> None: ...
+def write_frame(self, step: int, crystal: CrystalStructure) -> None: ...
 ```
