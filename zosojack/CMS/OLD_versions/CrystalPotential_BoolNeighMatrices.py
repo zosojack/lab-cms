@@ -1,4 +1,8 @@
-# CrystalPotential.py
+"""
+CrystalPotential.py
+===================
+Classe per calcolare potenziale e forze in un sistema cristallino.
+"""
 import numpy as np
 from numba import njit
 
@@ -11,9 +15,8 @@ from CMS.MolecularDynamics.PolynomialJunction import PolynomialJunction
 
 @njit(cache=True)
 def _potential_kernel(dist_matrix: np.ndarray, 
-                      neighbour_list: np.ndarray, 
-                      num_neighbours: np.ndarray,
-                      R_P: float,
+                      neighbour_mask: np.ndarray, 
+                      second_mask: np.ndarray, 
                       sigma: float, 
                       epsilon: float, 
                       coeffs: np.ndarray) -> float:
@@ -25,24 +28,22 @@ def _potential_kernel(dist_matrix: np.ndarray,
         A,B,C,D,E,F,G,H = coeffs
         
     for i in range(N):
-        for k in range(num_neighbours[i]):
-            j = neighbour_list[i, k]
-            if j <= i:
-                continue  # evito di contare due volte la stessa coppia
+        for j in range(i + 1, N):  # conti solo coppie (i<j) per evitare 1/2
             r = dist_matrix[i, j]
             # salta se distanza non definita o zero
             # ad esempio quando un atomo è nella Verlet Cage (r < R_V), ma fuori da R_C
             if not np.isfinite(r) or r == 0.0:
-                continue 
+                continue
             
-            # se minore di R_P, Lennard-Jones
-            if r <= R_P:
+            if neighbour_mask[i, j]:
                 inv_r = 1.0 / r
                 inv_r6 = (sigma * inv_r) ** 6
                 inv_r12 = inv_r6 * inv_r6
                 pot += 4.0 * epsilon * (inv_r12 - inv_r6)
-            # altrimenti polinomio di settimo grado (se definito)
-            else:         
+            else:
+                # Se r è finito e non è neighbour, è per forza un secondo vicino attivo.
+                # Non serve leggere la matrice 'second_mask' (risparmio memoria)   
+                 
                 if coeffs is not None:
                     # polinomio: A + B*r + C*r2 + D*r3 + ... + H*r6*r
                     # r2 = r * r, r3 = r2 * r, r4 = r3 * r, r5 = r4 * r, r6 = r5 * r
@@ -53,9 +54,8 @@ def _potential_kernel(dist_matrix: np.ndarray,
 @njit(cache=True)
 def _forces_kernel(positions: np.ndarray, 
                    dist_matrix: np.ndarray, 
-                   neighbour_list: np.ndarray, 
-                   num_neighbours: np.ndarray,
-                   R_P: float,
+                   neighbour_mask: np.ndarray, 
+                   second_mask: np.ndarray, 
                    sigma: float, 
                    epsilon: float, 
                    coeffs: np.ndarray, 
@@ -74,11 +74,8 @@ def _forces_kernel(positions: np.ndarray,
 
     for i in range(N):
         x_i, y_i, z_i = positions[i, 0], positions[i, 1], positions[i, 2]
-        for k in range(num_neighbours[i]):
-            j = neighbour_list[i, k]
-            if j <= i:
-                continue
-
+        for j in range(N):
+            
             r = dist_matrix[i, j]
             # salta se distanza non definita o zero
             # ad esempio quando un atomo è nella Verlet Cage (r < R_V), ma fuori da R_C
@@ -93,16 +90,17 @@ def _forces_kernel(positions: np.ndarray,
             dy -= Ly * np.round(dy / Ly)
             dz -= Lz * np.round(dz / Lz)
 
-            # se minore di R_P, derivata di Lennard-Jones
-            if r <= R_P:
+            if neighbour_mask[i, j]:
                 inv_r = 1.0 / r
                 inv_r2 = inv_r * inv_r
                 inv_r6 = inv_r2 * inv_r2 * inv_r2
                 term = (2.0 * s6 * inv_r6) - 1.0
                 inv_r8 = inv_r6 * inv_r2
                 Fscalar = 24.0 * epsilon * s6 * term * inv_r8
-            # altrimenti derivata del polinomio di settimo grado (se definito)
             else:
+                # Se r è finito e non è neighbour, è per forza un secondo vicino attivo.
+                # Non serve leggere la matrice 'second_mask' (risparmio memoria)
+                
                 if coeffs is not None:
                     # derivata polinomio: B + 2Cr + 3Dr^2 + ... + 7Hr^6
                     # r2 = r * r, r3 = r2 * r, r4 = r3 * r, r5 = r4 * r, r6 = r5 * r
@@ -111,17 +109,9 @@ def _forces_kernel(positions: np.ndarray,
                     Fscalar = -dVdr / r
             
             # aggiorno le forze  
-            fx = Fscalar * dx
-            fy = Fscalar * dy
-            fz = Fscalar * dz
-            
-            forces[i, 0] += fx
-            forces[i, 1] += fy
-            forces[i, 2] += fz
-            
-            forces[j, 0] -= fx
-            forces[j, 1] -= fy
-            forces[j, 2] -= fz
+            forces[i, 0] += Fscalar * dx
+            forces[i, 1] += Fscalar * dy
+            forces[i, 2] += Fscalar * dz
 
     return forces
 
@@ -171,12 +161,12 @@ class CrystalPotential:
         """
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
-            getattr(self.crystal, "neighbour_list", None) is None or \
-            getattr(self.crystal, "num_neighbours", None) is None:
+        getattr(self.crystal, "neighbour_matrix", None) is None or \
+        getattr(self.crystal, "second_neighbour_matrix", None) is None:
             self.crystal.find_neighbours()
         
-        neighbour_list = self.crystal.neighbour_list
-        num_neighbours = self.crystal.num_neighbours
+        mask_first = self.crystal.neighbour_matrix
+        mask_second = self.crystal.second_neighbour_matrix
         dist = self.crystal.distance_matrix
 
         coeffs = None
@@ -187,9 +177,8 @@ class CrystalPotential:
             coeffs = self.poly7.coeffs_array
             
         pot = _potential_kernel(dist_matrix=dist, 
-                                neighbour_list=neighbour_list, 
-                                R_P=self.crystal.R_P,
-                                num_neighbours=num_neighbours, 
+                                neighbour_mask=mask_first, 
+                                second_mask=mask_second, 
                                 sigma=self.sigma, 
                                 epsilon=self.epsilon, 
                                 coeffs=coeffs)
@@ -202,15 +191,14 @@ class CrystalPotential:
         """
         # assicuriamoci che esista tutto
         if getattr(self.crystal, "distance_matrix", None) is None or \
-            getattr(self.crystal, "neighbour_list", None) is None or \
-            getattr(self.crystal, "num_neighbours", None) is None:
+        getattr(self.crystal, "neighbour_matrix", None) is None or \
+        getattr(self.crystal, "second_neighbour_matrix", None) is None:
             self.crystal.find_neighbours()
             
         pos = np.asarray(self.crystal.positions, dtype=np.float64)
         dist = self.crystal.distance_matrix
-        neighbour_list = self.crystal.neighbour_list
-        num_neighbours = self.crystal.num_neighbours
-        R_P = self.crystal.R_P
+        m1 = self.crystal.neighbour_matrix
+        m2 = self.crystal.second_neighbour_matrix
         pbc = self.crystal.pbc
 
         coeffs = None
@@ -220,12 +208,4 @@ class CrystalPotential:
         elif self.poly7 is not None:
             coeffs = self.poly7.coeffs_array
 
-        return _forces_kernel(positions=pos,
-                              dist_matrix=dist, 
-                              neighbour_list=neighbour_list,
-                              num_neighbours=num_neighbours, 
-                              R_P=R_P,
-                              sigma=self.sigma,
-                              epsilon=self.epsilon,
-                              coeffs=coeffs,
-                              pbc=pbc)
+        return _forces_kernel(pos, dist, m1, m2, self.sigma, self.epsilon, coeffs, pbc)

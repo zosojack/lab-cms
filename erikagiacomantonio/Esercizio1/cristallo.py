@@ -24,8 +24,8 @@ def pbc(pos, Lx, Ly, Lz):
 
 @jit(nopython = True)
 def nbrs_and_distances(pos,natoms, rc):
-    nbrs = np.zeros(natoms, dtype=np.int64)
-    whichnbr = np.zeros((natoms, natoms), dtype=np.int64)
+    nbrs = np.zeros(natoms, dtype=np.int32)
+    whichnbr = np.zeros((natoms, natoms), dtype=np.int32)
     d2vec = np.zeros((natoms, natoms), dtype = np.float64)
     for i in range(natoms):
         for j in range(natoms):
@@ -46,8 +46,8 @@ def nbrs_and_distances(pos,natoms, rc):
 #caso in cui si sta considerando la singola cella, pongo condizioni periodiche al contorno
 @jit(cache=False)
 def nbrs_and_distances_cell(pos, natoms, rc, Lx, Ly, Lz):
-    nbrs = np.zeros(natoms, dtype=np.int64)
-    whichnbr = np.zeros((natoms, natoms), dtype=np.int64)
+    nbrs = np.zeros(natoms, dtype=np.int32)
+    whichnbr = np.zeros((natoms, natoms), dtype=np.int32)
     d2vec = np.zeros((natoms, natoms), dtype = np.float64)
     for i in range(natoms):
         for j in range(natoms):

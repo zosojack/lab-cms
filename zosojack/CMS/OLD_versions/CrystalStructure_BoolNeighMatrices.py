@@ -7,7 +7,6 @@ import numpy as np
 from numba import njit
 import copy
 
-
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
 # KERNELS DEI METODI DELLA CLASSE CrystalStructure
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
@@ -46,26 +45,26 @@ def _compute_distance_matrix(positions) -> np.ndarray:
     return dist
 
 @njit(cache=True)
-def _find_neighbour_masks_kernel(positions: np.ndarray,
-                                 R_C: float,
-                                 R_V: float,
-                                 pbc: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _find_neighbour_masks_kernel(positions,
+                                 R_P,
+                                 R_C,
+                                 R_V,
+                                 pbc) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     '''
     HACK: poiché rij viene salvato solo per i vicini, i confronti vengono effettuati
     senza calcolarne la radice quadrata, per efficienza. Per farlo, anche R_P, R_C e R_V
     vanno considerati al quadrato.
     '''
     # Pre-calcolo quadrati
+    R_P_squared = R_P*R_P
     R_C_squared = R_C*R_C
     R_V_squared = R_V*R_V
     # Per i loop
     N = positions.shape[0]
     # Nuove matrici dei vicini e delle distanze
-    neighbour_list = np.full((N, N), -1, dtype=np.int32)
-    num_neighbours = np.zeros(N, dtype=np.int32)
+    neighbour = np.zeros((N, N), dtype=np.bool_)
+    second = np.zeros((N, N), dtype=np.bool_)
     dist = np.full((N, N), np.inf) # inf se non vicini, 0 se stessi
-    
     
     if pbc is not None:
         Lx, Ly, Lz = pbc[0], pbc[1], pbc[2]
@@ -85,79 +84,95 @@ def _find_neighbour_masks_kernel(positions: np.ndarray,
             rij_squared = dx*dx + dy*dy + dz*dz
             # se rij è nella cella di Verlet R_V, lo considero
             if rij_squared <= R_V_squared:
-                # aggiungo l'indice j alla lista dei vicini di i
-                neighbour_list[i, num_neighbours[i]] = j
-                # aggiorno il numero di vicini di i
-                num_neighbours[i] += 1
-                
-                # aggiungo l'indice i alla lista dei vicini di j (Simmetria)
-                idx_j = num_neighbours[j]
-                if idx_j < N:
-                    neighbour_list[j, idx_j] = i
-                    num_neighbours[j] += 1
-                    
-                # se rij è anche entro R_C, salvo la distanza
-                if rij_squared <= R_C_squared:
+                # se è maggiore di R_C, lo segno come 2° vicino ma non salvo la distanza
+                if rij_squared > R_C_squared:
+                    second[i, j] = second[j, i] = True
+                # se è minore di R_C, salvo la distanza e controllo se è 1° o 2° vicino
+                else:
                     dist[i, j] = dist[j, i] = np.sqrt(rij_squared)
-                
+                    # se è entro R_P, lo segno come 1° vicino
+                    if rij_squared <= R_P_squared:
+                        neighbour[i, j] = neighbour[j, i] = True
+                    # se è entro R_C, lo segno come 2° vicino
+                    else:
+                        second[i, j] = second[j, i] = True
+                    
     for k in range(N):
         dist[k, k] = 0.0
         
-    return neighbour_list, num_neighbours, dist
+    return neighbour, second, dist
 
 @njit(cache=True)
-def _only_neighbours_distance_kernel(positions: np.ndarray, 
-                                     R_C: float, 
-                                     neighbour_list: np.ndarray, 
-                                     num_neighbours: np.ndarray, 
-                                     pbc: np.ndarray) -> np.ndarray:
+def _only_neighbours_distance_kernel(positions, 
+                                     R_P, 
+                                     R_C, 
+                                     R_V,
+                                     neighbour, 
+                                     second, 
+                                     pbc) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     
     '''
 
     '''
     # Per efficienza, confronto i quadrati delle distanze
+    R_P_squared = R_P*R_P
     R_C_squared = R_C*R_C
+    R_V_squared = R_V*R_V
     # Per la periodicità al contorno
     Lx, Ly, Lz = pbc[0], pbc[1], pbc[2]
     # Per i loop
     N = positions.shape[0]
-    
     # Nuova matrice delle distanze
     new_dist = np.full((N, N), np.inf) # inf se non vicini, 0 se stessi
     
     # RICALCOLO SOLO LE DISTANZE TRA I VICINI GIÀ NOTI
-    # per ciascun atomo i
     for i in range(N):
         x_i, y_i, z_i = positions[i, 0], positions[i, 1], positions[i, 2]
-    
-        # itero sui suoi vicini j, k-esimi vicini in neighbour_list
-        for k in range(num_neighbours[i]):
-            j = neighbour_list[i, k]
+        for j in range(i + 1, N):
+            # check veloce per vedere se i e j sono vicini
+            if not (neighbour[i, j] or second[i, j]):
+                continue 
             
-            # Evito doppio calcolo (poiché la lista contiene sia i->j che j->i)
-            # Calcolo solo se j > i
-            if j <= i:
-                continue
-
-            dx = x_i - positions[j, 0] 
+            # semplice distanza tra atomi i e j
+            dx = x_i - positions[j, 0] # x_i - x_j 
             dy = y_i - positions[j, 1]
             dz = z_i - positions[j, 2]
-            
+            # considero anche la periodicità al contorno
             dx -= Lx * np.round(dx / Lx)
             dy -= Ly * np.round(dy / Ly)
             dz -= Lz * np.round(dz / Lz)
-            
             rij_squared = dx*dx + dy*dy + dz*dz
             
-            # Se la distanza aggiornata è ancora entro R_C, la salvo
-            if rij_squared <= R_C_squared:
-                d_val = np.sqrt(rij_squared)
+            # per la logica di 'vicinanza'
+            is_neigh = False
+            is_second = False
+            d_val = np.inf
+
+            # se rij è ancora nella cella di Verlet R_V, lo considero
+            if rij_squared <= R_V_squared:
+                # se è maggiore di R_C, lo segno come 2° vicino ma non salvo la distanza
+                if rij_squared > R_C_squared:
+                    is_second = True
+                # se è minore di R_C, salvo la distanza e controllo se è 1° o 2° vicino
+                else:
+                    d_val = np.sqrt(rij_squared)
+                    # se è entro R_P, lo segno come 1° vicino
+                    if rij_squared <= R_P_squared:
+                        is_neigh = True
+                    # se è entro R_C, lo segno come 2° vicino
+                    else:
+                        is_second = True
+                        
+            # aggiorno le matrici di vicini e distanze
+            neighbour[i, j] = neighbour[j, i] = is_neigh
+            second[i, j] = second[j, i] = is_second
+            if d_val != np.inf:
                 new_dist[i, j] = new_dist[j, i] = d_val
                     
     for k in range(N):
         new_dist[k, k] = 0.0
         
-    return new_dist
+    return neighbour, second, new_dist
 
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
 # CLASS CrystalStructure
@@ -244,12 +259,6 @@ class CrystalStructure:
         # 16.6416 è la dimensione ideale della cella per Ag in Å
         self.pbc = np.full(3, 1664.16) # *100 così di default non considera la periodicità
         
-        # NUOVE STRUTTURE DATI
-        # Sostituiscono le matrici booleane N x N
-        self.neighbour_list = None     # Matrice (N, MAX_NEIGH) di int
-        self.num_neighbours = None     # Array (N) di int (conteggio vicini per ogni atomo)
-        self.distance_matrix = None    # Matrice densa distanze per compatibilità
-        
     @classmethod
     def from_file(cls, filename) -> CrystalStructure:
         """ Crea un Crystal leggendo da file. """
@@ -261,8 +270,8 @@ class CrystalStructure:
     @classmethod
     def empty(cls, n_atoms) -> CrystalStructure:
         """ Costruttore alternativo: crea Crystal vuoto """
-        zeros = np.zeros((n_atoms, 3), dtype=np.float64)
-        return cls(zeros)
+        zeros = np.zeros(n_atoms)
+        return cls(zeros, zeros, zeros)
     
     # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
     # PROPERTIES
@@ -435,15 +444,14 @@ class CrystalStructure:
         None
         '''
         positions = np.asarray(self.positions, dtype=np.float64)
-        neighbour_list, num_neighbours, dist = _find_neighbour_masks_kernel(
-            positions=positions,
-            R_C=self.R_C, 
-            R_V=self.R_V, 
-            pbc=self.pbc
-        )
+        neighbour, second, dist = _find_neighbour_masks_kernel(positions, 
+                                                               self.R_P, 
+                                                               self.R_C, 
+                                                               self.R_V, 
+                                                               self.pbc)
         # aggiorno le matrici dei vicini e delle distanze
-        self.neighbour_list = neighbour_list
-        self.num_neighbours = num_neighbours
+        self.neighbour_matrix = neighbour
+        self.second_neighbour_matrix = second
         self.distance_matrix = dist
         # eseguito il calcolo, si attiva un flag e si salvano le posizioni di riferimento
         self.neighbours_computed = True
@@ -460,23 +468,24 @@ class CrystalStructure:
         None
         '''
         positions = np.asarray(self.positions, dtype=np.float64)
-        dist = _only_neighbours_distance_kernel(
-            positions=positions, 
-            R_C=self.R_C, 
-            neighbour_list=self.neighbour_list, 
-            num_neighbours=self.num_neighbours, 
-            pbc=self.pbc
-        )
+        neighbour, second, dist = _only_neighbours_distance_kernel(positions, 
+                                                                   self.R_P, 
+                                                                   self.R_C, 
+                                                                   self.R_V, 
+                                                                   self.neighbour_matrix, 
+                                                                   self.distance_matrix, 
+                                                                   self.pbc)
         # aggiorno le matrici dei vicini e delle distanze
+        self.neighbour_matrix = neighbour
+        self.second_neighbour_matrix = second
         self.distance_matrix = dist
         
-    # NOTE: deprecated: matrici sostituite da neighbour_list e num_neighbours
     def print_neighbours(self, index=None) -> None:
         """
         Stampa gli indici dei primi vicini per ogni atomo o di uno nello specifico.
         """
         if not self.neighbours_computed:
-            print("Prima di chiamare questo metodo, esegui find_neighbours()")
+            print("Prima di chiamare questo metodo, esegui find_neighbours(R_C)")
             return None
         
         if index is not None:
@@ -488,8 +497,7 @@ class CrystalStructure:
             for i in range(self.N_atoms):
                 print(f"Atomo {i}, n_neigh={np.sum(self.neighbour_matrix[i])}: \
                     {np.where(self.neighbour_matrix[i])[0]}")
-    
-    # NOTE: deprecated: matrici sostituite da neighbour_list e num_neighbours
+                
     def print_second_neighbours(self, index=None) -> None:
         """
         Stampa gli indici dei secondi vicini per ogni atomo o di uno nello specifico.

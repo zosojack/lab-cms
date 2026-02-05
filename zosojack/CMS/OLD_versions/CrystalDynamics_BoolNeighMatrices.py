@@ -326,7 +326,7 @@ class CrystalDynamics:
 			Oggetto contenente i risultati della simulazione.
      	"""			
 
-		if getattr(self.crystal, "neighbour_list", None) is None:
+		if getattr(self.crystal, "neighbour_matrix", None) is None:
 			if debug:
 				print(
 					f"⚠️ Vicini non calcolati in precedenza. " + \
