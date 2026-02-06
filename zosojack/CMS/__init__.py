@@ -10,7 +10,7 @@ from .MolecularDynamics import (
     CrystalPotential,
     CrystalDynamics,
     PolynomialJunction,
-    SteepestDescend,
+    SteepestDescent,
     io,
 )
 
@@ -29,7 +29,7 @@ __all__ = [
     'CrystalPotential',
     'CrystalDynamics',
     'PolynomialJunction',
-    'SteepestDescend',
+    'SteepestDescent',
     'io',
     'ioKMC',
 ]

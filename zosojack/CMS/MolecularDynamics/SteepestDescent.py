@@ -6,7 +6,7 @@ from CMS.MolecularDynamics.CrystalStructure import CrystalStructure
 from CMS.MolecularDynamics.CrystalPotential import CrystalPotential
 from CMS.MolecularDynamics.PolynomialJunction import PolynomialJunction
 
-class SteepestDescend:
+class SteepestDescent:
     """
     SteepestDescent
     ===============
@@ -28,7 +28,14 @@ class SteepestDescend:
         self.crystal = crystal
         
             
-    def minimize_energy(self, max_steps=1000, F_tol=1e-5, C_steep=0.01, pol_junction=False):
+    def minimize_energy(
+        self, 
+        max_steps=1000,
+        F_tol=1e-5,
+        C_steep=0.01,
+        pol_junction=False,
+        debug=False
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Esegue la minimizzazione dell'energia e restituisce l'energia potenziale e le forze massime ad ogni passo.
 
@@ -45,10 +52,11 @@ class SteepestDescend:
         """
         
         if getattr(self.crystal, "neighbour_matrix", None) is None:
-            print(
-                f"⚠️ Vicini non calcolati in precedenza. " + \
-                f"Calcolo con R_C={self.crystal.R_C} e R_P={self.crystal.R_P}."
-            )
+            if debug:
+                print(
+                    f"⚠️ Vicini non calcolati in precedenza. " + \
+                    f"Calcolo con R_C={self.crystal.R_C} e R_P={self.crystal.R_P}."
+                )
             self.crystal.find_neighbours()
         
         # Array forza massima e energia

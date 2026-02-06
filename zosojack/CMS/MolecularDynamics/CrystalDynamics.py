@@ -498,6 +498,6 @@ class CrystalDynamicsResult:
 	def summary(self) -> None:
 		""" Stampa un riepilogo dei risultati della simulazione. """
 		print (f"Simulation Result:\n"
-				f" - Duration: {self.time_step*self.num_steps:.2f} ps\n"
+				f" - Duration: {self.time_step*self.num_steps*1E12:.2f} ps\n"
 				f" - Mean Temp: {self.mean_temp:.2f} ± {self.std_temp:.2f} K\n"
 				f" - Mean Energy: {self.mean_E_tot:.2f} ± {self.std_E_tot:.2f} eV\n")

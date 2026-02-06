@@ -4,7 +4,7 @@
 from .CrystalStructure import CrystalStructure
 from .CrystalPotential import CrystalPotential
 from .CrystalDynamics import CrystalDynamics
-from .SteepestDescend import SteepestDescend
+from .SteepestDescent import SteepestDescent
 from . import io 
 from .PolynomialJunction import PolynomialJunction
 
