@@ -32,7 +32,7 @@ class AtomTracker:
 
         self.index = index
         self.output_path = Path(output_file) # converte in Path
-        self.set_pcb_option(pbc_option)
+        self.set_pbc_option(pbc_option)
         
         # Crea la cartella se non esiste
         parent_folder = self.output_path.parent
@@ -42,7 +42,7 @@ class AtomTracker:
             f.write(f"TRAIETTORIA ATOMO {self.index} - {self.pbc_option.upper()}\n")
             f.write(f"step \t x \t y \t z\n")
             
-    def set_pcb_option(self, option: str) -> None:
+    def set_pbc_option(self, option: str) -> None:
         """
         Imposta l'opzione per il trattamento delle condizioni al contorno periodiche.
 
@@ -106,12 +106,12 @@ class XYZwriter():
         self.output_folder = Path(output_folder) # converte in Path
         self.dt = dt
         self.dump_interval = dump_interval
-        self.set_pcb_option(pbc_option)
+        self.set_pbc_option(pbc_option)
         
         # Crea la cartella se non esiste
         self.output_folder.mkdir(parents=True, exist_ok=True)
         
-    def set_pcb_option(self, option: str) -> None:
+    def set_pbc_option(self, option: str) -> None:
         """
         Imposta l'opzione per il trattamento delle condizioni al contorno periodiche.
 

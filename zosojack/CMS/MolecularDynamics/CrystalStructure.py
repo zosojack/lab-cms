@@ -383,7 +383,7 @@ class CrystalStructure:
             raise ValueError(f"R_V ({R_V}) non può essere minore di R_C ({self.R_C}).")
         self.R_V = R_V
         
-    def set_pbc(self, pbc) -> None:
+    def set_pbc(self, pbc: tuple | np.ndarray) -> None:
         """
         Imposta la dimensione della cella per la condizione di periodicità al contorno.
         Deve essere un array-like di 3 elementi.
@@ -398,14 +398,22 @@ class CrystalStructure:
         # controllo lunghezza
         if len(pbc) != 3:
             raise ValueError("pbc deve essere un array-like di 3 elementi: (Lx, Ly, Lz).")
+        # se va bene, converto in np.ndarray di float64
+        pbc = np.asarray(pbc, dtype=np.float64)
         # controllo consistenza con R_C
         if self.R_C >= 0.5 * min(pbc):
             raise ValueError("⚠️ Attenzione: R_C deve essere minore della metà della dimensione della cella.")
-        # per ricevere inf, deve convertirlo in un float molto grande
-        if any(element == np.inf for element in pbc):
-            pbc = [element if element != np.inf else 100*np.max(pbc) for element in pbc]
         
-        self.pbc = np.asarray(pbc, dtype=np.float64)
+        # per ricevere inf, deve convertirlo in un float molto grande
+        # sostituisco prima gli inf
+        finite_values = pbc[np.isfinite(pbc)]
+        if finite_values.size == 0:
+            raise ValueError("Almeno una dimensione della cella deve essere finita.")
+
+        replacement = 100 * np.max(finite_values)
+        pbc = np.where(np.isinf(pbc), replacement, pbc)
+        
+        self.pbc = pbc
     
     # TODO: metodo per aggiungere più atomi contemporaneamente?
     def add_atom(self, position) -> None:
