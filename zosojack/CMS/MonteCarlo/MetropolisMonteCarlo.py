@@ -49,7 +49,7 @@ class MetropolisMonteCarlo:
         L: tuple[int, int], # (Lx, Ly)
         N_atoms: int,
         T: float,
-        J: float = 1.0,
+        J: float =  -0.345,
         seed: int = 123413432,
         xyz_writer: Optional[XYZwriter] = None,
     ):

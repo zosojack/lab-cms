@@ -375,8 +375,8 @@ class CrystalDynamics:
 			self._update_positions()
 			self._update_neighbours_distances()
 			self._update_forces(poly7=poly7)
-			self._update_velocities()
-
+			self._update_velocities() # rescale_velocity va applcato solo durante la termalizzazione!
+   
 			potential_energy_now = CrystalPotential(
 				self.crystal,
 				poly7=poly7,
