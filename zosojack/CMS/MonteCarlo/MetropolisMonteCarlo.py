@@ -192,3 +192,25 @@ class MetropolisMonteCarloResult:
         self.min_energy = np.min(self.energies)
         self.avg_energy = np.mean(self.energies)
         self.std_energy = np.std(self.energies)
+        
+        
+def run_single_simulation_wrapper(args):
+    """
+    Wrapper globale per eseguire la simulazione in parallelo su macOS.
+    Deve essere definito in un file .py importabile, non nel notebook.
+    """
+    Lx, Ly, N_atoms, T, seed, N_steps, therm_steps = args
+    
+    # Ricostruiamo l'oggetto qui dentro
+    # Nota: xyz_writer è None per evitare conflitti di scrittura file in parallelo
+    sim = MetropolisMonteCarlo(
+        L=(Lx, Ly),
+        N_atoms=N_atoms,
+        T=T,
+        seed=seed,
+        xyz_writer=None 
+    )
+    
+    result = sim.run(N_steps=N_steps, thermalization_steps=therm_steps)
+    
+    return (Lx, Ly, T, result.avg_energy, result.std_energy)
