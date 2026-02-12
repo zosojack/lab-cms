@@ -222,7 +222,8 @@ class KineticMonteCarlo:
                 n_deposition_events += 1
                 # Tracking deposizioni
                 if self.xyz_writer is not None:
-                    self.xyz_writer.write_frame(time, n_deposition_events, self.height)
+                    if time >= self.xyz_writer.start_time: # per ritardare il primo frame se necessario
+                        self.xyz_writer.write_frame(time, n_deposition_events, self.height)
             else:
                 rho -= k_depo
                 self._diffusion_event(rho, self.k_diff)

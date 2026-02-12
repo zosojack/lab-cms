@@ -298,6 +298,7 @@ class CrystalDynamics:
                     t_th:float = 0,
                     rescale_velocity: bool = False,
                     debug: bool = False,
+                    include_thermalization_in_output: bool = False, #NOTE: new argument to include thermalization steps in output
                     track_last=False, n_print=None, output=False #NOTE: deprecated arguments
     ) -> CrystalDynamicsResult:
 		"""
@@ -349,17 +350,24 @@ class CrystalDynamics:
 
 		if self.old_force is None:
 			self.old_force = CrystalPotential(self.crystal, poly7=poly7).compute_forces()
-	
-
+  
 		# LOOP TERMALIZZAZIONE ------------------------------
 		steps_th = int(t_th / self.dt) if t_th > 0 else 0
+  		# array per i dati di output della termalizzazione
+		tot_en_th = np.zeros(steps_th)
+		temp_th = np.zeros(steps_th)
 		for step in range(steps_th):
 			self._update_positions()
 			self._update_neighbours_distances()
 			self._update_forces(poly7=poly7)
 			self._update_velocities(rescale_velocity=rescale_velocity)
+   
+			if include_thermalization_in_output:
+				tot_en_th[step] = CrystalPotential(self.crystal, poly7=poly7).compute_potential() + self.kinetic_E
+				temp_th[step] = self._temperature()
+       
 		# FINE LOOP TERMALIZZAZIONE -------------------------
-	
+  
 		# Vettori per salvare i dati
 		meta_energies_dict = {
 			'total': np.zeros(n_steps - steps_th),
@@ -367,6 +375,7 @@ class CrystalDynamics:
 			'potential': np.zeros(n_steps - steps_th),
 		}
 		meta_T = np.zeros(n_steps - steps_th)
+	
 		# NOTE: kinetic_E è sempre aggiornata in _update_velocities()
 		# rende tutto un po' confuso 
   		# perché è l'unica energia ad essere un membro invece che una variabile locale
@@ -404,7 +413,12 @@ class CrystalDynamics:
 			if self.xyz_writer is not None:
 				self.xyz_writer.write_frame(step, self.crystal)
 		# FINE LOOP DINAMICA ------------------------------------
-  
+
+		if include_thermalization_in_output:
+			meta_energies_dict['total'] = np.concatenate((tot_en_th, meta_energies_dict['total']))
+			meta_T = np.concatenate((temp_th, meta_T))
+			n_steps += steps_th  # raddoppio i passi di termalizzazione per riflettere l'inclusione nei dati di output
+
 		# Risultati finali
 		result = CrystalDynamicsResult(
 			time_step = self.dt,

@@ -44,14 +44,18 @@ class XYZwriter:
     def __init__(self, 
                  output_folder: str, 
                  max_deposition_steps: int = 1_000, 
-                 max_files: int = 500) -> None:
+                 max_files: int = 500,
+                 start_time: float = 0.0) -> None:
         """ Inizializza l'oggetto che registra le traiettorie degli atomi. """
         self.output_folder = Path(output_folder) # converte in Path
         self.max_deposition_steps = max_deposition_steps
         self.max_files = max_files
         self.current_file_count = 0
-        
+        self.start_time = start_time # to delay the first frame if needed
         self.dump_interval = max(self.max_deposition_steps // max_files, 1)
+
+        # HACK
+        self.start_deposition_step = None
         
         # Crea la cartella se non esiste
         self.output_folder.mkdir(parents=True, exist_ok=True)
@@ -71,16 +75,21 @@ class XYZwriter:
         height : np.ndarray
             Altezze delle pile di atomi sulla superficie.
         '''
+        # HACK
+        self.start_deposition_step = deposition_step if self.start_deposition_step is None else self.start_deposition_step
+        
+        current_writing_step = deposition_step - self.start_deposition_step
+        
         # early exit
-        if deposition_step > self.max_deposition_steps:
+        if current_writing_step > self.max_deposition_steps:
             return
         
         # da pile di atomi, devo passare a posizioni (N_atomsxN_atoms -> N_atomsx3)
         positions = _convert_pile_to_xyz(height)
         
-        if deposition_step % self.dump_interval == 0:
+        if current_writing_step % self.dump_interval == 0:
             
-            file_index = int(deposition_step // self.dump_interval)
+            file_index = int(current_writing_step // self.dump_interval)
             N_atoms = positions.shape[0]
             
             with open(self.output_folder / f"frame_{file_index}.xyz", 'w') as f:

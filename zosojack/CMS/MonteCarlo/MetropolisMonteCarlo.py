@@ -193,7 +193,8 @@ class MetropolisMonteCarloResult:
         self.avg_energy = np.mean(self.energies)
         self.std_energy = np.std(self.energies)
         
-        
+# Wrapper per eseguire in parallelo su macOS l'esercizio 2_4 multi-core
+# (necessario che sia definito in un file .py importabile, non in un notebook)
 def run_single_simulation_wrapper(args):
     """
     Wrapper globale per eseguire la simulazione in parallelo su macOS.
@@ -214,3 +215,33 @@ def run_single_simulation_wrapper(args):
     result = sim.run(N_steps=N_steps, thermalization_steps=therm_steps)
     
     return (Lx, Ly, T, result.avg_energy, result.std_energy)
+
+
+def run_ground_state_search(args):
+    """
+    Esegue simulazione per un dato N e seed, salvando XYZ se richiesto.
+    Restituisce (N, seed, result_object).
+    """
+    Lx, Ly, N, T, seed, n_steps, therm_steps, output_base_folder = args
+    
+    # Costruiamo il percorso univoco per questo task
+    # (Essenziale in parallelo: ogni processo deve scrivere in una cartella diversa)
+    # Nota: se output_base_folder è None, non scriviamo nulla.
+    writer = None
+    if output_base_folder:
+        folder_path = f"{output_base_folder}/seed={seed}/MMC~N={N}~T={T}/"
+        writer = XYZwriter(output_folder=folder_path)
+
+    sim = MetropolisMonteCarlo(
+        L=(Lx, Ly),
+        N_atoms=N,
+        T=T,
+        seed=seed,
+        xyz_writer=writer 
+    )
+    
+    # Eseguiamo
+    result = sim.run(N_steps=n_steps, thermalization_steps=therm_steps)
+    
+    # Restituiamo N per raggruppare dopo, e l'intero oggetto result
+    return (N, result)
