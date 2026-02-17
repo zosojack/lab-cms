@@ -61,39 +61,33 @@ def _update_system_energy(height: np.ndarray,
                           start_site: tuple[int, int],
                           end_site: tuple[int, int]) -> float:
     ''' 
+    Esegue la trial move sui siti indicati.
     Calcola la nuova energia totale aggiornando solo la differenza (Delta E).
-    Utilizza la matrice 'height' che è GIÀ stata modificata dalla trial move.
+    Utilizza la matrice 'height' originale e la modifica internamente.
+    Ciò è progettato per lasciare la logica principale nella classe MetropolisMonteCarlo.
     '''
     
-    # Estraiamo le coordinate (ignoriamo le z passate nella tupla perché 
-    # ricalcoliamo le altezze reali dalla matrice per sicurezza)
+    # Coordinate
     x_from, y_from = start_site
     x_to, y_to = end_site
     
-    # Costanti dell'esercizio (DEVONO essere identiche a compute_system_energy)
-    J1 = -0.345          # Energia laterale
-    # J0 si elide nel calcolo del Delta E, quindi non serve esplicitarlo
+    # costante nell'esercizio
+    J1 = -0.345
     
-    # 1. Calcoliamo i legami nel sito di ARRIVO (dove l'atomo è ORA presente)
-    z_new = height[x_to, y_to]
-    n_new = neigh_XYZ(x_to, y_to, z_new, height)
-    
-    # 2. "Flip-Flop": Ripristiniamo temporaneamente la matrice allo stato precedente
-    #    per vedere quanti legami aveva l'atomo nel sito di partenza.
-    height[x_to, y_to] -= 1
-    height[x_from, y_from] += 1
-    
-    # 3. Calcoliamo i legami nel sito di PARTENZA (dove l'atomo ERA presente)
+    # legami nel sito di PARTENZA #
     z_old = height[x_from, y_from]
     n_old = neigh_XYZ(x_from, y_from, z_old, height)
     
-    # 4. Ripristiniamo la modifica (rimettiamo l'atomo nel sito di arrivo come era all'inizio della funzione)
+    # Trial move 
     height[x_from, y_from] -= 1
     height[x_to, y_to] += 1
     
-    # 5. Calcolo Delta E
-    # Delta = (Legami Nuovi - Legami Vecchi) * J1
-    # Usiamo J1 intero (non mezzi) perché stiamo spostando un intero atomo e i suoi legami.
+    # legami nel sito di ARRIVO #
+    z_new = height[x_to, y_to]
+    n_new = neigh_XYZ(x_to, y_to, z_new, height)
+    
+    # Calcolo Delta E #
+    # Delta = (Legami Nuovi - Legami Vecchi) * J1/2
     delta_E = (n_new - n_old) * J1
     
     return current_energy + delta_E

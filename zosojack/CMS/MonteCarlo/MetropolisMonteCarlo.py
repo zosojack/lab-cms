@@ -92,8 +92,7 @@ class MetropolisMonteCarlo:
         y = np.random.randint(0, self.Ly)
         return (x, y)
         
-    
-            
+
     def run(self, N_steps: int = 100_000, thermalization_steps: int = 0) -> MetropolisMonteCarloResult:
         
         # array energie
@@ -108,18 +107,17 @@ class MetropolisMonteCarlo:
             start_site = self._select_start_site()
             x0, y0 = start_site
             # Seleziona il sito di arrivo
-            end_site = self._select_end_site()
+            end_site = self._select_end_site() 
+            while end_site == start_site: # evita di scegliere lo stesso sito
+                end_site = self._select_end_site()
             x1, y1 = end_site
+            
             # CONTROLLA SE LO SPOSTAMENTO È VALIDO #
-            # la trial move è effettuata direttamente sulla matrice originale
-            self.height[x0, y0] -= 1
-            self.height[x1, y1] += 1
-            # TODO: AGGIORNARE ENERGIA IN MODO PIÙ EFFICIENTE
-            # trial_energy = _compute_system_energy(self.height) # energia trial
+            # la trial move è effettuata all'interno di update_system_energy
             trial_energy = _update_system_energy(
                 height=self.height,
                 current_energy=self.energy,
-                start_site=(x0, y0), # La Z non serve, la legge dentro
+                start_site=(x0, y0), 
                 end_site=(x1, y1)
             )
             delta_E = trial_energy - self.energy

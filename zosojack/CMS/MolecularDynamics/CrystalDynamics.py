@@ -17,11 +17,15 @@ from CMS.MolecularDynamics.io import AtomTracker, XYZwriter
 k_B = 1 / 11603  # eV/K
 N_A = 1.66053906660E-27  # numero di Avogadro
 
-# funzioni jit
 @njit(cache=True)
 def _remove_rotation(positions: np.ndarray, 
                      velocities: np.ndarray, 
                      atomic_mass: float) -> np.ndarray:
+    """
+	Rimuove la rotazione del cristallo dovuta all'estrazione di velocità casuali.
+	Per il tensore di interzia vedere:
+	https://farside.ph.utexas.edu/teaching/336k/Newton/node64.html
+	"""
     
     N = positions.shape[0]
     
@@ -38,7 +42,7 @@ def _remove_rotation(positions: np.ndarray,
     I = np.zeros((3, 3), dtype=np.float64)
     
     # Loop unico su tutti gli atomi per riempire L e I #
-    # Usiamo variabili temporanee scalari per velocità
+    # Variabili temporanee scalari per velocità
     for i in range(N):
         # Braccio (distanza dal cdm)
         rx = positions[i, 0] - r_cdm[0]
@@ -50,7 +54,7 @@ def _remove_rotation(positions: np.ndarray,
         vz = velocities[i, 2]
         
         # Momento Angolare: L += r x (m*v)
-        # Nota: moltiplico per la massa alla fine per risparmiare N operazioni
+        # NOTE: moltiplico per la massa alla fine per risparmiare N operazioni
         L_tot[0] += ry * vz - rz * vy
         L_tot[1] += rz * vx - rx * vz
         L_tot[2] += rx * vy - ry * vx
@@ -76,15 +80,11 @@ def _remove_rotation(positions: np.ndarray,
     I[2, 1] = I[1, 2]
     
     # Calcolo omega #
-    # Invece di inv(I) @ L, risolviamo il sistema lineare I * omega = L
-    # È più stabile numericamente e piace di più a Numba
-    # Gestiamo il caso patologico (determinante nullo) con un try/except non supportato bene in njit puro,
-    # quindi assumiamo che il sistema 3D non sia degenere (non lineare).
+    # risolvo sistema lineare I * omega = L
     omega = np.linalg.solve(I, L_tot)
     
     # Correggo le velocità #
     # v_new = v_old - (omega x r)
-    # Modifico l'array velocities in-place o ne creo uno nuovo
     v_corrected = np.zeros_like(velocities)
     
     for i in range(N):
